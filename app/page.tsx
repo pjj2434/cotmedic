@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -24,14 +24,7 @@ export default function LoginPage() {
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!isPending && session) {
-      setIsRedirecting(true);
-      window.location.replace("/portal");
-    }
-  }, [session, isPending]);
-
-  if (isRedirecting || (!isPending && session)) {
+  if (isRedirecting) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-100 text-zinc-600">
         Redirecting to portal...
@@ -64,10 +57,6 @@ export default function LoginPage() {
 
     setIsRedirecting(true);
     window.location.assign("/portal");
-    setTimeout(() => {
-      router.push("/portal");
-      router.refresh();
-    }, 800);
   }
 
   return (
