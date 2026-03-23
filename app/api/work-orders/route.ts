@@ -1,0 +1,95 @@
+import { withAuthApi } from "@/lib/with-auth";
+import { db } from "@/db";
+import { workOrder, user } from "@/db/schema";
+import { eq, and, desc } from "drizzle-orm";
+import { NextResponse } from "next/server";
+
+export type WorkOrderType = "cot" | "lift";
+
+/** GET - List work orders. Owner sees all, technician sees own, client sees their orders. */
+export async function GET(request: Request) {
+  const authResult = await withAuthApi({ roles: ["owner", "technician", "client"] });
+  if (authResult instanceof NextResponse) return authResult;
+  const { user: authUser, role } = authResult;
+
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get("id");
+  const type = searchParams.get("type") as WorkOrderType | null;
+  const customerId = searchParams.get("customerId");
+  const technicianId = searchParams.get("technicianId");
+
+  const conditions = [];
+  if (id) conditions.push(eq(workOrder.id, id));
+  if (role === "technician") conditions.push(eq(workOrder.technicianId, authUser.id));
+  if (role === "client") conditions.push(eq(workOrder.customerId, authUser.id));
+  if (type) conditions.push(eq(workOrder.type, type));
+  if (customerId && role !== "client") conditions.push(eq(workOrder.customerId, customerId));
+  if (technicianId && role === "owner") conditions.push(eq(workOrder.technicianId, technicianId));
+
+  const orders = await db
+    .select()
+    .from(workOrder)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(workOrder.createdAt));
+
+  const ordersWithNames = await Promise.all(
+    orders.map(async (o) => {
+      const [tech, cust] = await Promise.all([
+        db.select({ name: user.name }).from(user).where(eq(user.id, o.technicianId)).limit(1),
+        db.select({ name: user.name }).from(user).where(eq(user.id, o.customerId)).limit(1),
+      ]);
+      return {
+        ...o,
+        technicianName: tech[0]?.name ?? "—",
+        customerName: cust[0]?.name ?? "—",
+      };
+    })
+  );
+
+  if (id) {
+    const single = ordersWithNames[0];
+    if (!single) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(single);
+  }
+  return NextResponse.json({ workOrders: ordersWithNames });
+}
+
+/** POST - Create work order. Technician only. */
+export async function POST(request: Request) {
+  const authResult = await withAuthApi({ roles: ["technician"] });
+  if (authResult instanceof NextResponse) return authResult;
+  const { user: authUser } = authResult;
+
+  let body: { type: WorkOrderType; customerId: string; formData: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { type, customerId, formData } = body;
+  if (!type || !customerId || formData == null) {
+    return NextResponse.json(
+      { error: "type, customerId, and formData are required" },
+      { status: 400 }
+    );
+  }
+  if (type !== "cot" && type !== "lift") {
+    return NextResponse.json({ error: "type must be cot or lift" }, { status: 400 });
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await db.insert(workOrder).values({
+    id,
+    technicianId: authUser.id,
+    customerId,
+    type,
+    formData: JSON.stringify(formData),
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return NextResponse.json({ id, success: true });
+}

@@ -1,0 +1,91 @@
+import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { admin, username } from "better-auth/plugins";
+import { createAccessControl } from "better-auth/plugins/access";
+import { db } from "@/db";
+import * as schema from "@/db/schema";
+
+function getAuthBaseUrl() {
+  const candidates = [
+    process.env.BETTER_AUTH_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    "http://localhost:3000",
+  ];
+
+  for (const candidate of candidates) {
+    const value = candidate?.trim();
+    if (!value) continue;
+    try {
+      return new URL(value).origin;
+    } catch {
+      // ignore invalid URL values and keep checking candidates
+    }
+  }
+
+  return "http://localhost:3000";
+}
+
+// Custom roles: owner (admin) | technician | client
+const ac = createAccessControl({
+  user: ["create", "list", "set-role", "ban", "impersonate", "delete", "set-password", "get", "update"],
+  session: ["list", "revoke", "delete"],
+});
+const ownerAc = ac.newRole({
+  user: ["create", "list", "set-role", "ban", "impersonate", "delete", "set-password", "get", "update"],
+  session: ["list", "revoke", "delete"],
+});
+const technicianAc = ac.newRole({
+  user: ["list", "get"],
+  session: ["list"],
+});
+const clientAc = ac.newRole({ user: [], session: [] });
+
+export const auth = betterAuth({
+  baseURL: getAuthBaseUrl(),
+  rateLimit: {
+    window: 60,
+    max: 100,
+    customRules: {
+      "/sign-in/username": { window: 15, max: 5 },
+    },
+  },
+  trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(",").filter(Boolean) ?? [],
+  user: {
+    additionalFields: {
+      resetPassword: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: true,
+      },
+      customerType: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+    },
+  },
+  emailAndPassword: {
+    enabled: true,
+  },
+  database: drizzleAdapter(db, {
+    provider: "sqlite",
+    schema: {
+      user: schema.user,
+      session: schema.session,
+      account: schema.account,
+    },
+  }),
+  plugins: [
+    username(),
+    admin({
+      defaultRole: "client",
+      adminRoles: ["owner"],
+      roles: {
+        owner: ownerAc,
+        technician: technicianAc,
+        client: clientAc,
+      },
+    }),
+  ],
+});
