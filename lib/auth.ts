@@ -6,9 +6,11 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 
 function getAuthBaseUrl() {
+  const vercelUrl = process.env.VERCEL_URL?.trim();
   const candidates = [
     process.env.BETTER_AUTH_URL,
     process.env.NEXT_PUBLIC_APP_URL,
+    vercelUrl ? `https://${vercelUrl}` : undefined,
     "http://localhost:3000",
   ];
 
@@ -23,6 +25,20 @@ function getAuthBaseUrl() {
   }
 
   return "http://localhost:3000";
+}
+
+function getTrustedOrigins() {
+  const fromEnv =
+    process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(",")
+      .map((v) => v.trim())
+      .filter(Boolean) ?? [];
+
+  const auto = [getAuthBaseUrl()];
+  if (process.env.VERCEL_URL?.trim()) {
+    auto.push(`https://${process.env.VERCEL_URL.trim()}`);
+  }
+
+  return Array.from(new Set([...fromEnv, ...auto]));
 }
 
 // Custom roles: owner (admin) | technician | client
@@ -49,7 +65,7 @@ export const auth = betterAuth({
       "/sign-in/username": { window: 15, max: 5 },
     },
   },
-  trustedOrigins: process.env.BETTER_AUTH_TRUSTED_ORIGINS?.split(",").filter(Boolean) ?? [],
+  trustedOrigins: getTrustedOrigins(),
   user: {
     additionalFields: {
       resetPassword: {
