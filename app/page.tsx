@@ -21,16 +21,22 @@ export default function LoginPage() {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isPending && session) {
-      router.push("/portal");
+      setIsRedirecting(true);
+      window.location.replace("/portal");
     }
-  }, [session, isPending, router]);
+  }, [session, isPending]);
 
-  if (!isPending && session) {
-    return null;
+  if (isRedirecting || (!isPending && session)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-100 text-zinc-600">
+        Redirecting to portal...
+      </div>
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -56,14 +62,12 @@ export default function LoginPage() {
       return;
     }
 
-    if (data?.url) {
-      window.location.href = data.url;
-      return;
-    }
-    if (data) {
+    setIsRedirecting(true);
+    window.location.assign("/portal");
+    setTimeout(() => {
       router.push("/portal");
       router.refresh();
-    }
+    }, 800);
   }
 
   return (
