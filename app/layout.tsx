@@ -33,10 +33,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" style={{ touchAction: "pan-x pan-y" }}>
+    <html lang="en" style={{ touchAction: "pan-y", overflowX: "hidden", maxWidth: "100%" }}>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        style={{ touchAction: "pan-x pan-y" }}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden`}
+        style={{ touchAction: "pan-y", maxWidth: "100%" }}
       >
         <PreventZoom />
         <PwaRegister />

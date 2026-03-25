@@ -122,7 +122,9 @@
   }
   html,
   body {
-    touch-action: pan-x pan-y;
+    touch-action: pan-y;
+    overflow-x: hidden;
+    max-width: 100%;
   }
   body {
     @apply bg-background text-foreground;

@@ -78,10 +78,9 @@ const liftStyles = `
   .wo-form-view .form-shell { background: #e8e8e8; padding: 24px; font-family: var(--sans); color: var(--text); }
   .wo-form-view .form-card { max-width: 820px; margin: 0 auto; background: #fff; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; box-shadow: 0 4px 40px rgba(0,0,0,0.12); }
   .wo-form-view .form-header { background: linear-gradient(135deg, #1a1a1a 0%, #000 100%); border-bottom: 2px solid rgba(255,255,255,0.15); padding: 28px 36px 24px; display: flex; align-items: center; gap: 20px; }
-  .wo-form-view .logo-mark { width: 52px; height: 52px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .wo-form-view .header-text h1 { font-family: var(--display); font-size: 24px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #fff; line-height: 1; }
-  .wo-form-view .header-text h1 span { color: #aaa; font-weight: 400; }
-  .wo-form-view .header-text p { font-family: var(--mono); font-size: 10px; color: #aaa; letter-spacing: 3px; text-transform: uppercase; margin-top: 5px; }
+  .wo-form-view .logo-mark { background: #fff; border-radius: 4px; padding: 6px 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .wo-form-view .header-brand { display: flex; flex-direction: column; gap: 8px; }
+  .wo-form-view .header-tagline { font-family: var(--mono); font-size: 10px; color: #aaa; letter-spacing: 3px; text-transform: uppercase; margin: 0; }
   .wo-form-view .header-badge { margin-left: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25); padding: 6px 14px; border-radius: 3px; font-family: var(--display); font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: #fff; }
   .wo-form-view .form-body { padding: 28px 36px; }
   .wo-form-view .section { margin-bottom: 28px; }
@@ -126,6 +125,7 @@ const liftStyles = `
     .wo-form-view .auth-box { padding: 12px 14px; margin-bottom: 12px; }
     .wo-form-view .auth-notice { font-size: 10px; margin-bottom: 10px; }
     .wo-form-view .form-footer { padding: 8px 20px; }
+    .wo-form-view .logo-mark img { height: 28px; }
   }
 `;
 
@@ -335,9 +335,12 @@ export function LiftFormView({ form }: { form: FormData }) {
       <div className="form-shell">
         <div className="form-card">
           <div className="form-header">
-            <div className="header-text">
-              <h1>Lift <span>/</span> Medik</h1>
-              <p>Serving the Mobility Assist Community</p>
+            <div className="header-brand">
+              <div className="logo-mark">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/liftlogo.jpeg" alt="Lift Medik" width={140} height={48} className="h-9 w-auto" />
+              </div>
+              <p className="header-tagline">Serving the Mobility Assist Community</p>
             </div>
             <div className="header-badge">PM / Repair Report</div>
           </div>
