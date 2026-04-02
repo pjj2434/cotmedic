@@ -35,7 +35,7 @@ export function OwnerDashboard({ name, analytics }: { name: string; analytics: A
         />
         <StatCard value={analytics.totalCustomers} label="Customers" />
         <StatCard value={analytics.totalTechnicians} label="Technicians" />
-        <StatCard value={analytics.totalFiles} label="Client files" />
+        <StatCard value={analytics.totalFiles} label="Work order files" />
       </div>
 
       <div className="flex flex-wrap gap-3">

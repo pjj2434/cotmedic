@@ -3,7 +3,10 @@
  * Uses a new-tab strategy on iOS Safari (iframe print is unreliable there),
  * and hidden iframe printing elsewhere.
  */
-export function printWorkOrderContent(printRoot: HTMLElement): void {
+export function printWorkOrderContent(
+  printRoot: HTMLElement,
+  options?: { forcePopupPrint?: boolean }
+): void {
   const content = printRoot.innerHTML;
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "";
@@ -14,8 +17,21 @@ export function printWorkOrderContent(printRoot: HTMLElement): void {
     window.matchMedia("(display-mode: standalone)").matches ||
     ("standalone" in navigator &&
       Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
+  const isReportPrint = !!printRoot.querySelector(".report-print-sheet");
 
-  const printStyles = `
+  const printStyles = isReportPrint
+    ? `
+    @page { size: 8.5in 11in; margin: 0.35in; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff !important; width: auto; height: auto; overflow: visible; }
+    .print-root { display: block; width: 100%; }
+    .report-screen { display: none !important; }
+    .report-print-sheet { display: block !important; width: 100%; }
+    .report-print-sheet .report-header { break-inside: avoid-page; page-break-inside: avoid; margin-bottom: 14px; }
+    .report-print-sheet img { display: block; width: auto; max-width: 140px; max-height: 30px; object-fit: contain; }
+    .report-print-sheet .break-inside-avoid { break-inside: avoid-page; page-break-inside: avoid; }
+  `
+    : `
     @page { size: 8.5in 11in; margin: 0.2in; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; background: #fff !important; width: auto; height: auto; overflow: hidden; }
@@ -35,6 +51,24 @@ export function printWorkOrderContent(printRoot: HTMLElement): void {
     }
   `;
   const html = `<!DOCTYPE html><html><head><base href="${origin}/" /><style>${printStyles}</style></head><body><div class="print-root"><div class="print-scale">${content}</div></div></body></html>`;
+
+  if (options?.forcePopupPrint) {
+    const pop = window.open("", "_blank");
+    if (!pop) return;
+    pop.document.open();
+    pop.document.write(html);
+    pop.document.close();
+    const triggerPrint = () => {
+      pop.focus();
+      pop.print();
+    };
+    if (pop.document.readyState === "complete") {
+      setTimeout(triggerPrint, 100);
+    } else {
+      pop.addEventListener("load", () => setTimeout(triggerPrint, 100), { once: true });
+    }
+    return;
+  }
 
   const waitForImages = (root: ParentNode) => {
     const imgEls = root.querySelectorAll("img");

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, FolderOpen } from "lucide-react";
+import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2 } from "lucide-react";
 
 type User = {
   id: string;
@@ -223,7 +222,8 @@ export function CustomersClient() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
           <Input
@@ -239,10 +239,12 @@ export function CustomersClient() {
             size="sm"
             onClick={() => setSearch("")}
             aria-label="Clear search"
+            className="sm:self-auto self-end"
           >
             <X className="size-4" />
           </Button>
         )}
+        </div>
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white">
@@ -269,12 +271,6 @@ export function CustomersClient() {
                   <p className="text-sm text-zinc-500">User ID: {getUserId(u)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1 sm:gap-2">
-                  <Button variant="outline" size="sm" asChild className="shrink-0">
-                    <Link href={`/portal/customers/${u.id}/files`}>
-                      <FolderOpen className="size-4" />
-                      Files
-                    </Link>
-                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

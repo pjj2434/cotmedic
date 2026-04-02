@@ -20,14 +20,8 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Search, FileText, ChevronRight, Printer } from "lucide-react";
+import { FileText, ChevronRight, Printer } from "lucide-react";
 import Link from "next/link";
-import { WorkOrderFormView } from "@/components/work-order-form-view";
 import { printWorkOrderContent } from "@/lib/print-work-order";
 
 type Customer = { id: string; name: string; customerType?: string };
@@ -41,6 +35,74 @@ type WorkOrder = {
   technicianName: string;
   customerName: string;
 };
+
+type ParsedWorkOrderFields = {
+  dateIso: string;
+  serial: string;
+  ambulance: string;
+  notes: string;
+  partsUsed: string;
+  partsNeeded: string;
+  extraDetails: string;
+};
+
+function parseDateToIso(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const raw = value.trim();
+  if (!raw) return "";
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const us = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!us) return "";
+  const mm = Number(us[1]);
+  const dd = Number(us[2]);
+  const yyyy = Number(us[3]);
+  const d = new Date(yyyy, mm - 1, dd);
+  const valid = d.getFullYear() === yyyy && d.getMonth() === mm - 1 && d.getDate() === dd;
+  if (!valid) return "";
+  return `${String(yyyy).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
+  try {
+    const data = JSON.parse(order.formData) as Record<string, unknown>;
+    const listToText = (value: unknown) =>
+      Array.isArray(value)
+        ? value
+            .map((v) => String(v ?? "").trim())
+            .filter(Boolean)
+            .join(", ")
+        : "";
+    const detailPairs: string[] = [
+      `Model: ${String(data.model ?? "").trim()}`,
+      `Make: ${String(data.make ?? "").trim()}`,
+      `Bus: ${String(data.bus ?? "").trim()}`,
+      `Stair Chair Model: ${String(data.stairChairModel ?? "").trim()}`,
+      `Stair Chair SN: ${String(data.stairChairSN ?? "").trim()}`,
+      `Lock Notes: ${String(data.lockBarIssue ?? "").trim()}`,
+    ].filter((x) => !x.endsWith(": "));
+
+    return {
+      dateIso: parseDateToIso(data.date),
+      serial: String(data.sn ?? "").trim(),
+      ambulance: String(data.ambulance ?? data.bus ?? "").trim(),
+      notes: String(data.description ?? "").trim(),
+      partsUsed: listToText(data.partsUsed),
+      partsNeeded: listToText(data.partsNeeded),
+      extraDetails: detailPairs.join(" | "),
+    };
+  } catch {
+    return {
+      dateIso: "",
+      serial: "",
+      ambulance: "",
+      notes: "",
+      partsUsed: "",
+      partsNeeded: "",
+      extraDetails: "",
+    };
+  }
+}
 
 function customerMatchesWorkType(
   customerType: string | undefined,
@@ -70,16 +132,18 @@ export function WorkOrdersClient({
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("all");
-  const [filterSearch, setFilterSearch] = useState("");
-  const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterSerial, setFilterSerial] = useState("");
+  const [filterAmbulance, setFilterAmbulance] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState("");
 
   // Technician: new work order flow
   const [workType, setWorkType] = useState<"cot" | "lift" | "">("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customersLoading, setCustomersLoading] = useState(false);
-  const printContentRef = useRef<HTMLDivElement>(null);
-  const ticketScrollRef = useRef<HTMLDivElement>(null);
+  const reportPrintRef = useRef<HTMLDivElement>(null);
 
   const fetchWorkOrders = useCallback(async () => {
     setLoading(true);
@@ -128,23 +192,41 @@ export function WorkOrdersClient({
     setSelectedCustomer(null);
   }, [workType, fetchCustomers]);
 
-  useEffect(() => {
-    if (!selectedOrder) return;
-    requestAnimationFrame(() => {
-      if (ticketScrollRef.current) ticketScrollRef.current.scrollTop = 0;
-    });
-  }, [selectedOrder]);
-
   const filteredOrders = workOrders.filter((o) => {
-    if (filterSearch.trim()) {
-      const q = filterSearch.toLowerCase();
-      return (
-        o.customerName.toLowerCase().includes(q) ||
-        o.technicianName.toLowerCase().includes(q) ||
-        o.type.toLowerCase().includes(q)
-      );
+    const parsed = extractSearchFields(o);
+    if (filterStartDate && (!parsed.dateIso || parsed.dateIso < filterStartDate)) return false;
+    if (filterEndDate && (!parsed.dateIso || parsed.dateIso > filterEndDate)) return false;
+    if (filterCustomer.trim()) {
+      const q = filterCustomer.trim().toLowerCase();
+      if (!o.customerName.toLowerCase().includes(q)) return false;
     }
+    if (filterSerial.trim()) {
+      const q = filterSerial.trim().toLowerCase();
+      if (!parsed.serial.toLowerCase().includes(q)) return false;
+    }
+    if (filterAmbulance.trim()) {
+      const q = filterAmbulance.trim().toLowerCase();
+      if (!parsed.ambulance.toLowerCase().includes(q)) return false;
+    }
+
     return true;
+  });
+
+  const reportRows = filteredOrders.map((o) => {
+    const parsed = extractSearchFields(o);
+    return {
+      id: o.id,
+      date: parsed.dateIso || new Date(o.createdAt).toISOString().slice(0, 10),
+      serial: parsed.serial || "—",
+      ambulance: parsed.ambulance || "—",
+      notes: parsed.notes || "—",
+      partsUsed: parsed.partsUsed || "—",
+      partsNeeded: parsed.partsNeeded || "—",
+      details: parsed.extraDetails || "—",
+      customer: o.customerName,
+      technician: o.technicianName,
+      type: o.type === "cot" ? "Cot Medik" : "Lift Medik",
+    };
   });
 
   const formUrl =
@@ -155,16 +237,22 @@ export function WorkOrdersClient({
       : null;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-900">Work Orders</h1>
-        <p className="mt-2 text-zinc-500">
-          {role === "owner"
-            ? "View and filter all repair reports."
-            : role === "client"
-              ? "View your repair reports and service history."
-              : "Start a new repair or view your completed work."}
-        </p>
+        <div className={role === "client" ? "flex flex-wrap items-start justify-between gap-3" : ""}>
+          <div>
+            <h1 className={role === "client" ? "text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl" : "text-2xl font-semibold text-zinc-900"}>
+              Work Orders
+            </h1>
+            <p className={role === "client" ? "mt-2 max-w-2xl text-sm text-zinc-600" : "mt-2 text-zinc-500"}>
+              {role === "owner"
+                ? "View and filter all repair reports."
+                : role === "client"
+                  ? "Track service history, filter by date range, and generate customer-ready reports."
+                  : "Start a new repair or view your completed work."}
+            </p>
+          </div>
+        </div>
       </div>
 
       {role === "technician" && (
@@ -240,43 +328,101 @@ export function WorkOrdersClient({
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div className={role === "client" ? "rounded-md border border-zinc-200 bg-white shadow-sm" : "rounded-md border border-zinc-200 bg-white shadow-sm"}>
         <div className="flex flex-col gap-4 border-b border-zinc-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="font-medium text-zinc-900">
+          <h2 className={role === "client" ? "text-base font-semibold tracking-tight text-zinc-900 sm:text-lg" : "font-medium text-zinc-900"}>
             {role === "owner" ? "All work orders" : "Your work orders"}
           </h2>
-          {role === "owner" && (
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={filterType} onValueChange={setFilterType}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  <SelectItem value="cot">Cot Medik</SelectItem>
-                  <SelectItem value="lift">Lift Medik</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
+          {(role === "owner" || role === "client") && (
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {role === "owner" && (
+                <div className="min-w-0 space-y-1">
+                  <Label className="text-xs text-zinc-600">Type</Label>
+                  <Select value={filterType} onValueChange={setFilterType}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All types</SelectItem>
+                      <SelectItem value="cot">Cot Medik</SelectItem>
+                      <SelectItem value="lift">Lift Medik</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="min-w-0 space-y-1">
+                <Label className="text-xs text-zinc-600">Start date</Label>
                 <Input
-                  placeholder="Search…"
-                  value={filterSearch}
-                  onChange={(e) => setFilterSearch(e.target.value)}
-                  className="w-[180px] pl-9"
+                  type="date"
+                  value={filterStartDate}
+                  onChange={(e) => setFilterStartDate(e.target.value)}
+                  className="w-full min-w-0"
                 />
               </div>
-            </div>
-          )}
-          {role === "client" && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
-              <Input
-                placeholder="Search…"
-                value={filterSearch}
-                onChange={(e) => setFilterSearch(e.target.value)}
-                className="w-[180px] pl-9"
-              />
+              <div className="min-w-0 space-y-1">
+                <Label className="text-xs text-zinc-600">End date</Label>
+                <Input
+                  type="date"
+                  value={filterEndDate}
+                  onChange={(e) => setFilterEndDate(e.target.value)}
+                  className="w-full min-w-0"
+                />
+              </div>
+              {role === "owner" && (
+                <div className="min-w-0 space-y-1">
+                  <Label className="text-xs text-zinc-600">Customer</Label>
+                  <Input
+                    placeholder="Customer…"
+                    value={filterCustomer}
+                    onChange={(e) => setFilterCustomer(e.target.value)}
+                    className="w-full min-w-0"
+                  />
+                </div>
+              )}
+              <div className="min-w-0 space-y-1">
+                <Label className="text-xs text-zinc-600">Serial number</Label>
+                <Input
+                  placeholder="Serial number…"
+                  value={filterSerial}
+                  onChange={(e) => setFilterSerial(e.target.value)}
+                  className="w-full min-w-0"
+                />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <Label className="text-xs text-zinc-600">Ambulance / Bus</Label>
+                <Input
+                  placeholder="Ambulance / Bus…"
+                  value={filterAmbulance}
+                  onChange={(e) => setFilterAmbulance(e.target.value)}
+                  className="w-full min-w-0"
+                />
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setFilterType("all");
+                  setFilterStartDate("");
+                  setFilterEndDate("");
+                  setFilterCustomer("");
+                  setFilterSerial("");
+                  setFilterAmbulance("");
+                }}
+              >
+                Clear filters
+              </Button>
+              <Button
+                variant="outline"
+                className={role === "client" ? "w-full border-red-600 bg-red-600 text-white hover:border-red-700 hover:bg-red-700 hover:text-white" : "w-full"}
+                onClick={() => {
+                  if (reportPrintRef.current) {
+                    printWorkOrderContent(reportPrintRef.current);
+                  }
+                }}
+              >
+                <Printer className="mr-2 size-4" />
+                Print report
+              </Button>
             </div>
           )}
         </div>
@@ -285,70 +431,250 @@ export function WorkOrdersClient({
         ) : filteredOrders.length === 0 ? (
           <div className="p-8 text-center text-zinc-500">No work orders yet.</div>
         ) : (
-          <div className="divide-y divide-zinc-100">
+          <div className="divide-y divide-zinc-200">
             {filteredOrders.map((o) => (
-              <div
+              <Link
                 key={o.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedOrder(o)}
-                onKeyDown={(e) => e.key === "Enter" && setSelectedOrder(o)}
-                className="flex cursor-pointer items-center justify-between px-4 py-3 hover:bg-zinc-50"
+                href={`/portal/work-orders/${o.id}`}
+                className={
+                  role === "client"
+                    ? "flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-4 transition-colors hover:border-red-200 hover:bg-zinc-50"
+                    : "flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-3 hover:border-zinc-300 hover:bg-zinc-50"
+                }
               >
                 <div>
-                  <p className="font-medium text-zinc-900">
+                  <p className={role === "client" ? "text-base font-semibold text-zinc-900" : "text-sm font-medium text-zinc-900 sm:text-base"}>
                     {o.customerName} · {o.type === "cot" ? "Cot Medik" : "Lift Medik"}
                   </p>
-                  <p className="text-sm text-zinc-500">
+                  <p className={role === "client" ? "mt-0.5 text-sm text-zinc-600" : "text-xs text-zinc-500 sm:text-sm"}>
                     {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
                   </p>
                 </div>
                 <ChevronRight className="size-4 text-zinc-400" />
-              </div>
+              </Link>
             ))}
           </div>
         )}
       </div>
 
-      <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent
-          className="max-h-[95vh] max-w-[900px] overflow-hidden p-0 sm:max-w-[900px]"
-          showCloseButton={true}
-          closeButtonClassName="text-red-600 hover:text-red-700 hover:bg-red-50"
-          onOpenAutoFocus={(e) => e.preventDefault()}
-        >
-          {selectedOrder && (
-            <>
-              <DialogTitle className="sr-only">
-                Work Order: {selectedOrder.customerName} · {selectedOrder.type === "cot" ? "Cot Medik" : "Lift Medik"}
-              </DialogTitle>
-              <div className="flex items-center justify-start gap-2 border-b border-zinc-200 bg-zinc-50 px-4 py-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="hidden sm:inline-flex"
-                  onClick={() => {
-                    if (printContentRef.current) printWorkOrderContent(printContentRef.current);
-                  }}
-                >
-                  <Printer className="mr-2 size-4" />
-                  Print
-                </Button>
+      {(role === "owner" || role === "client") && (
+        <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
+          <div className="border-b border-zinc-200 px-4 py-3">
+            <h3 className="font-medium text-zinc-900">Report table ({reportRows.length})</h3>
+            <p className="mt-1 text-xs text-zinc-500">
+              Uses current filters. Print to export a paper/PDF report.
+            </p>
+          </div>
+          <div>
+            <style>{`
+              .report-print-sheet-inline { display: none; }
+              @media print {
+                .report-screen { display: none !important; }
+                .report-print-sheet-inline { display: block !important; }
+              }
+            `}</style>
+
+            <div className="report-screen">
+              <div className="hidden overflow-x-auto md:block">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-zinc-50 text-left text-zinc-600">
+                    <tr>
+                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2">Serial #</th>
+                      <th className="px-3 py-2">Ambulance/Bus</th>
+                      <th className="px-3 py-2">Customer</th>
+                      <th className="px-3 py-2">Technician</th>
+                      <th className="px-3 py-2">Type</th>
+                      <th className="px-3 py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.map((row) => (
+                      <tr key={row.id} className="border-t border-zinc-100 align-top">
+                        <td className="px-3 py-2">{new Date(row.date).toLocaleDateString()}</td>
+                        <td className="px-3 py-2">{row.serial}</td>
+                        <td className="px-3 py-2">{row.ambulance}</td>
+                        <td className="px-3 py-2">{row.customer}</td>
+                        <td className="px-3 py-2">{row.technician}</td>
+                        <td className="px-3 py-2">{row.type}</td>
+                        <td className="px-3 py-2 whitespace-pre-wrap">{row.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div
-                ref={(node) => {
-                  printContentRef.current = node;
-                  ticketScrollRef.current = node;
-                }}
-                data-work-order-print
-                className="max-h-[calc(95vh-52px)] overflow-y-auto"
-              >
-                <WorkOrderFormView type={selectedOrder.type} formData={selectedOrder.formData} />
+
+              <div className="space-y-2.5 p-3 md:hidden">
+                {reportRows.length === 0 ? (
+                  <div className="border border-zinc-200 p-4 text-center text-sm text-zinc-500">
+                    No rows match current filters.
+                  </div>
+                ) : (
+                  reportRows.map((row) => (
+                    <div key={row.id} className="border border-zinc-200 bg-zinc-50/40 p-3">
+                      <p className="text-sm font-semibold text-zinc-900 leading-tight">
+                        {row.customer}
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-600">
+                        {new Date(row.date).toLocaleDateString()} · {row.type}
+                      </p>
+                      <div className="mt-2 space-y-1 text-xs text-zinc-700">
+                        <p><span className="font-medium">Technician:</span> {row.technician}</p>
+                        <p><span className="font-medium">Serial:</span> {row.serial}</p>
+                        <p><span className="font-medium">Ambulance/Bus:</span> {row.ambulance}</p>
+                      </div>
+                      <p className="mt-2 border-t border-zinc-200 pt-2 text-xs text-zinc-700 whitespace-pre-wrap">
+                        <span className="font-medium">Notes:</span> {row.notes}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+            </div>
+
+            <div className="report-print-sheet-inline bg-white p-6 text-black">
+              <div className="report-header mb-5 border-b-2 border-black pb-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/cotlogo.png" alt="Cot Medik" className="h-8 w-auto" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-8 w-auto" />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold tracking-wide">Work Order Report</p>
+                    <p className="text-xs text-zinc-700">
+                      Generated {new Date().toLocaleDateString()} · {reportRows.length} record(s)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {reportRows.length === 0 ? (
+                <p className="text-sm text-zinc-600">No rows match current filters.</p>
+              ) : (
+                <div className="space-y-4">
+                  {reportRows.map((row) => (
+                    <div
+                      key={row.id}
+                      className="break-inside-avoid border-[3px] border-black bg-white p-4 shadow-[0_2px_0_0_#000]"
+                    >
+                      <p className="border-b-2 border-black pb-2 text-sm font-bold uppercase tracking-[0.08em]">
+                        {new Date(row.date).toLocaleDateString()} · {row.type}
+                      </p>
+                      <p className="mt-2 text-xs leading-relaxed">
+                        Customer: {row.customer} | Technician: {row.technician}
+                      </p>
+                      <p className="text-xs leading-relaxed">Serial: {row.serial} | Ambulance/Bus: {row.ambulance}</p>
+                      <p className="mt-2 border-t border-black pt-2 text-xs leading-relaxed whitespace-pre-wrap">
+                        <span className="font-bold">Notes:</span> {row.notes}
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed whitespace-pre-wrap">
+                        <span className="font-bold">Parts Used:</span> {row.partsUsed}
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed whitespace-pre-wrap">
+                        <span className="font-bold">Parts Needed:</span> {row.partsNeeded}
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed whitespace-pre-wrap">
+                        <span className="font-bold">Details:</span> {row.details}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(role === "owner" || role === "client") && (
+        <div className="hidden">
+          <div ref={reportPrintRef} data-work-order-print className="report-print-sheet bg-white p-6 text-black">
+            <style>{`
+              .report-box {
+                border: 3px solid #000 !important;
+                background: #fff !important;
+                padding: 14px !important;
+                margin-bottom: 14px !important;
+                break-inside: avoid-page;
+                page-break-inside: avoid;
+              }
+              .report-box-title {
+                border-bottom: 2px solid #000 !important;
+                padding-bottom: 8px !important;
+                margin: 0 0 10px 0 !important;
+                font-size: 13px !important;
+                font-weight: 800 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.08em !important;
+              }
+              .report-line {
+                margin: 4px 0 !important;
+                font-size: 12px !important;
+                line-height: 1.45 !important;
+              }
+              .report-block {
+                margin-top: 8px !important;
+                border-top: 1px solid #000 !important;
+                padding-top: 8px !important;
+                font-size: 12px !important;
+                line-height: 1.45 !important;
+                white-space: pre-wrap;
+              }
+              .report-label {
+                font-weight: 800 !important;
+              }
+            `}</style>
+            <div className="report-header mb-5 border-b-2 border-black pb-3">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/cotlogo.png" alt="Cot Medik" className="h-8 w-auto" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-8 w-auto" />
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-bold tracking-wide">Work Order Report</p>
+                  <p className="text-xs text-zinc-700">
+                    Generated {new Date().toLocaleDateString()} · {reportRows.length} record(s)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {reportRows.length === 0 ? (
+              <p className="text-sm text-zinc-600">No rows match current filters.</p>
+            ) : (
+              <div className="space-y-4">
+                {reportRows.map((row) => (
+                  <div key={row.id} className="report-box">
+                    <p className="report-box-title">
+                      {new Date(row.date).toLocaleDateString()} · {row.type}
+                    </p>
+                    <p className="report-line">
+                      Customer: {row.customer} | Technician: {row.technician}
+                    </p>
+                    <p className="report-line">Serial: {row.serial} | Ambulance/Bus: {row.ambulance}</p>
+                    <p className="report-block">
+                      <span className="report-label">Notes:</span> {row.notes}
+                    </p>
+                    <p className="report-line whitespace-pre-wrap">
+                      <span className="report-label">Parts Used:</span> {row.partsUsed}
+                    </p>
+                    <p className="report-line whitespace-pre-wrap">
+                      <span className="report-label">Parts Needed:</span> {row.partsNeeded}
+                    </p>
+                    <p className="report-line whitespace-pre-wrap">
+                      <span className="report-label">Details:</span> {row.details}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

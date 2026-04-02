@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { workOrder, user, clientFile } from "@/db/schema";
+import { workOrder, user, workOrderFile } from "@/db/schema";
 import { eq, sql, desc, gte } from "drizzle-orm";
 
 export type Analytics = {
@@ -24,7 +24,7 @@ export async function getAnalytics(): Promise<Analytics> {
     db.select({ count: sql<number>`count(*)` }).from(workOrder).where(eq(workOrder.type, "lift")),
     db.select({ count: sql<number>`count(*)` }).from(user).where(eq(user.role, "client")),
     db.select({ count: sql<number>`count(*)` }).from(user).where(eq(user.role, "technician")),
-    db.select({ count: sql<number>`count(*)` }).from(clientFile),
+    db.select({ count: sql<number>`count(*)` }).from(workOrderFile),
     db.select({
       id: workOrder.id,
       type: workOrder.type,

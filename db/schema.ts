@@ -42,6 +42,25 @@ export const clientFile = sqliteTable("clientFile", {
   createdAt: text("createdAt").notNull(),
 });
 
+// Work order files (PDF, images) – attached directly to a work order
+export const workOrderFile = sqliteTable("workOrderFile", {
+  id: text("id").primaryKey(),
+  workOrderId: text("workOrderId")
+    .notNull()
+    .references(() => workOrder.id, { onDelete: "cascade" }),
+  customerId: text("customerId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  fileKey: text("fileKey").notNull(),
+  url: text("url").notNull(),
+  name: text("name").notNull(),
+  size: integer("size").notNull(),
+  mimeType: text("mimeType").notNull(),
+  uploadedById: text("uploadedById")
+    .references(() => user.id, { onDelete: "set null" }),
+  createdAt: text("createdAt").notNull(),
+});
+
 // Work order / repair report
 export const workOrder = sqliteTable("workOrder", {
   id: text("id").primaryKey(),
