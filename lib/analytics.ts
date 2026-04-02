@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { workOrder, user, workOrderFile } from "@/db/schema";
-import { eq, sql, desc, gte } from "drizzle-orm";
+import { eq, sql, desc, gte, inArray } from "drizzle-orm";
 
 export type Analytics = {
   totalWorkOrders: number;
@@ -10,7 +10,7 @@ export type Analytics = {
   totalCustomers: number;
   totalTechnicians: number;
   totalFiles: number;
-  recentOrders: { id: string; type: string; createdAt: string }[];
+  recentOrders: { id: string; type: string; createdAt: string; hasFiles: boolean }[];
 };
 
 export async function getAnalytics(): Promise<Analytics> {
@@ -35,6 +35,15 @@ export async function getAnalytics(): Promise<Analytics> {
       .limit(5),
   ]);
 
+  const recentIds = recentOrders.map((o) => o.id);
+  const fileRows = recentIds.length
+    ? await db
+        .selectDistinct({ workOrderId: workOrderFile.workOrderId })
+        .from(workOrderFile)
+        .where(inArray(workOrderFile.workOrderId, recentIds))
+    : [];
+  const fileOrderIds = new Set(fileRows.map((f) => f.workOrderId));
+
   return {
     totalWorkOrders: Number(totalWorkOrders[0]?.count ?? 0),
     workOrdersThisMonth: Number(workOrdersThisMonth[0]?.count ?? 0),
@@ -43,6 +52,9 @@ export async function getAnalytics(): Promise<Analytics> {
     totalCustomers: Number(totalCustomers[0]?.count ?? 0),
     totalTechnicians: Number(totalTechnicians[0]?.count ?? 0),
     totalFiles: Number(totalFiles[0]?.count ?? 0),
-    recentOrders: recentOrders,
+    recentOrders: recentOrders.map((o) => ({
+      ...o,
+      hasFiles: fileOrderIds.has(o.id),
+    })),
   };
 }

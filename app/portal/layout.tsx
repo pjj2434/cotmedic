@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { PortalNav } from "./portal-nav";
+import { OwnerPortalNav } from "./owner-portal-nav";
 
 export default async function PortalLayout({
   children,
@@ -12,6 +13,10 @@ export default async function PortalLayout({
 
   if (!session) {
     redirect("/");
+  }
+
+  if (session.user.role === "owner") {
+    return <OwnerPortalNav>{children}</OwnerPortalNav>;
   }
 
   return <PortalNav role={session.user.role ?? undefined}>{children}</PortalNav>;

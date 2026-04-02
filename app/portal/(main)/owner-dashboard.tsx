@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import type { Analytics } from "@/lib/analytics";
 
 function StatCard({
@@ -69,14 +70,22 @@ export function OwnerDashboard({ name, analytics }: { name: string; analytics: A
               <li key={o.id}>
                 <Link
                   href={`/portal/work-orders/${o.id}`}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-50"
+                  className="block px-4 py-2.5 text-sm hover:bg-zinc-50"
                 >
-                  <span className="font-medium text-zinc-900">
-                    {o.type === "cot" ? "Cot" : "Lift"} · {new Date(o.createdAt).toLocaleDateString()}
-                  </span>
-                  <span className="text-zinc-500">
-                    {new Date(o.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                  </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-zinc-900">
+                      {o.type === "cot" ? "Cot" : "Lift"} · {new Date(o.createdAt).toLocaleDateString()}
+                    </span>
+                    <span className="text-zinc-500">
+                      {new Date(o.createdAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  {!o.hasFiles && (
+                    <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">
+                      <AlertTriangle className="size-3.5" />
+                      <span>No file attached</span>
+                    </div>
+                  )}
                 </Link>
               </li>
             ))}

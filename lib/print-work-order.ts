@@ -28,7 +28,19 @@ export function printWorkOrderContent(
     .report-screen { display: none !important; }
     .report-print-sheet { display: block !important; width: 100%; }
     .report-print-sheet .report-header { break-inside: avoid-page; page-break-inside: avoid; margin-bottom: 14px; }
-    .report-print-sheet img { display: block; width: auto; max-width: 140px; max-height: 30px; object-fit: contain; }
+    .report-print-sheet img.report-logo,
+    .report-print-sheet .report-header img {
+      display: inline-block !important;
+      width: 96px !important;
+      height: 22px !important;
+      min-width: 96px !important;
+      min-height: 22px !important;
+      max-width: 96px !important;
+      max-height: 22px !important;
+      object-fit: contain !important;
+      vertical-align: middle !important;
+      flex: 0 0 auto !important;
+    }
     .report-print-sheet .break-inside-avoid { break-inside: avoid-page; page-break-inside: avoid; }
   `
     : `

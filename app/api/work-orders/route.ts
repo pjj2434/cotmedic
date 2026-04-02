@@ -1,7 +1,7 @@
 import { withAuthApi } from "@/lib/with-auth";
 import { db } from "@/db";
-import { workOrder, user } from "@/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { workOrder, user, workOrderFile } from "@/db/schema";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export type WorkOrderType = "cot" | "lift";
@@ -46,12 +46,25 @@ export async function GET(request: Request) {
     })
   );
 
+  const orderIds = ordersWithNames.map((o) => o.id);
+  const fileRows = orderIds.length
+    ? await db
+        .selectDistinct({ workOrderId: workOrderFile.workOrderId })
+        .from(workOrderFile)
+        .where(inArray(workOrderFile.workOrderId, orderIds))
+    : [];
+  const ordersWithFiles = new Set(fileRows.map((f) => f.workOrderId));
+  const ordersWithMeta = ordersWithNames.map((o) => ({
+    ...o,
+    hasFiles: ordersWithFiles.has(o.id),
+  }));
+
   if (id) {
-    const single = ordersWithNames[0];
+    const single = ordersWithMeta[0];
     if (!single) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(single);
   }
-  return NextResponse.json({ workOrders: ordersWithNames });
+  return NextResponse.json({ workOrders: ordersWithMeta });
 }
 
 /** POST - Create work order. Technician only. */

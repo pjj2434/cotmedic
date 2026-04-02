@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,7 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { FileText, ChevronRight, Printer } from "lucide-react";
+import { FileText, ChevronRight, Printer, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { printWorkOrderContent } from "@/lib/print-work-order";
 
@@ -34,6 +34,7 @@ type WorkOrder = {
   createdAt: string;
   technicianName: string;
   customerName: string;
+  hasFiles?: boolean;
 };
 
 type ParsedWorkOrderFields = {
@@ -136,7 +137,7 @@ export function WorkOrdersClient({
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterSerial, setFilterSerial] = useState("");
   const [filterAmbulance, setFilterAmbulance] = useState("");
-  const [filterCustomer, setFilterCustomer] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState<Customer | null>(null);
 
   // Technician: new work order flow
   const [workType, setWorkType] = useState<"cot" | "lift" | "">("");
@@ -196,9 +197,8 @@ export function WorkOrdersClient({
     const parsed = extractSearchFields(o);
     if (filterStartDate && (!parsed.dateIso || parsed.dateIso < filterStartDate)) return false;
     if (filterEndDate && (!parsed.dateIso || parsed.dateIso > filterEndDate)) return false;
-    if (filterCustomer.trim()) {
-      const q = filterCustomer.trim().toLowerCase();
-      if (!o.customerName.toLowerCase().includes(q)) return false;
+    if (filterCustomer && o.customerId !== filterCustomer.id) {
+      return false;
     }
     if (filterSerial.trim()) {
       const q = filterSerial.trim().toLowerCase();
@@ -235,6 +235,15 @@ export function WorkOrdersClient({
         ? `/repair-form?techName=${encodeURIComponent(userName)}&techId=${userId}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
         : `/lift-repair-form?techName=${encodeURIComponent(userName)}&techId=${userId}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
       : null;
+
+  const ownerCustomerOptions = useMemo(() => {
+    const customerMap = new Map<string, Customer>();
+    for (const order of workOrders) {
+      if (!order.customerId || !order.customerName) continue;
+      customerMap.set(order.customerId, { id: order.customerId, name: order.customerName });
+    }
+    return Array.from(customerMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [workOrders]);
 
   return (
     <div className="space-y-6">
@@ -371,12 +380,29 @@ export function WorkOrdersClient({
               {role === "owner" && (
                 <div className="min-w-0 space-y-1">
                   <Label className="text-xs text-zinc-600">Customer</Label>
-                  <Input
-                    placeholder="Customer…"
+                  <Combobox
+                    items={ownerCustomerOptions}
                     value={filterCustomer}
-                    onChange={(e) => setFilterCustomer(e.target.value)}
-                    className="w-full min-w-0"
-                  />
+                    onValueChange={(v) => setFilterCustomer(v as Customer | null)}
+                    itemToStringLabel={(c) => (c as Customer).name}
+                    isItemEqualToValue={(a, b) => (a as Customer)?.id === (b as Customer)?.id}
+                  >
+                    <ComboboxInput
+                      className="h-9 w-full min-w-0 text-sm"
+                      placeholder="Select customer…"
+                      showClear={!!filterCustomer}
+                    />
+                    <ComboboxContent>
+                      <ComboboxEmpty>No customer found.</ComboboxEmpty>
+                      <ComboboxList>
+                        {(item) => (
+                          <ComboboxItem key={(item as Customer).id} value={item as Customer}>
+                            {(item as Customer).name}
+                          </ComboboxItem>
+                        )}
+                      </ComboboxList>
+                    </ComboboxContent>
+                  </Combobox>
                 </div>
               )}
               <div className="min-w-0 space-y-1">
@@ -404,7 +430,7 @@ export function WorkOrdersClient({
                   setFilterType("all");
                   setFilterStartDate("");
                   setFilterEndDate("");
-                  setFilterCustomer("");
+                  setFilterCustomer(null);
                   setFilterSerial("");
                   setFilterAmbulance("");
                 }}
@@ -449,6 +475,12 @@ export function WorkOrdersClient({
                   <p className={role === "client" ? "mt-0.5 text-sm text-zinc-600" : "text-xs text-zinc-500 sm:text-sm"}>
                     {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
                   </p>
+                  {role === "owner" && !o.hasFiles && (
+                    <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">
+                      <AlertTriangle className="size-3.5" />
+                      No file attached
+                    </p>
+                  )}
                 </div>
                 <ChevronRight className="size-4 text-zinc-400" />
               </Link>
@@ -476,28 +508,28 @@ export function WorkOrdersClient({
 
             <div className="report-screen">
               <div className="hidden overflow-x-auto md:block">
-                <table className="min-w-full text-sm">
+                <table className="min-w-[980px] w-full table-fixed text-sm">
                   <thead className="bg-zinc-50 text-left text-zinc-600">
                     <tr>
-                      <th className="px-3 py-2">Date</th>
-                      <th className="px-3 py-2">Serial #</th>
-                      <th className="px-3 py-2">Ambulance/Bus</th>
-                      <th className="px-3 py-2">Customer</th>
-                      <th className="px-3 py-2">Technician</th>
-                      <th className="px-3 py-2">Type</th>
-                      <th className="px-3 py-2">Notes</th>
+                      <th className="w-[11%] px-3 py-2 font-medium">Date</th>
+                      <th className="w-[13%] px-3 py-2 font-medium">Serial #</th>
+                      <th className="w-[15%] px-3 py-2 font-medium">Ambulance/Bus</th>
+                      <th className="w-[16%] px-3 py-2 font-medium">Customer</th>
+                      <th className="w-[15%] px-3 py-2 font-medium">Technician</th>
+                      <th className="w-[10%] px-3 py-2 font-medium">Type</th>
+                      <th className="w-[20%] px-3 py-2 font-medium">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reportRows.map((row) => (
                       <tr key={row.id} className="border-t border-zinc-100 align-top">
-                        <td className="px-3 py-2">{new Date(row.date).toLocaleDateString()}</td>
-                        <td className="px-3 py-2">{row.serial}</td>
-                        <td className="px-3 py-2">{row.ambulance}</td>
-                        <td className="px-3 py-2">{row.customer}</td>
-                        <td className="px-3 py-2">{row.technician}</td>
-                        <td className="px-3 py-2">{row.type}</td>
-                        <td className="px-3 py-2 whitespace-pre-wrap">{row.notes}</td>
+                        <td className="px-3 py-2 text-zinc-700">{new Date(row.date).toLocaleDateString()}</td>
+                        <td className="px-3 py-2 wrap-break-word text-zinc-700">{row.serial}</td>
+                        <td className="px-3 py-2 wrap-break-word text-zinc-700">{row.ambulance}</td>
+                        <td className="px-3 py-2 wrap-break-word text-zinc-900">{row.customer}</td>
+                        <td className="px-3 py-2 wrap-break-word text-zinc-700">{row.technician}</td>
+                        <td className="px-3 py-2 text-zinc-700">{row.type}</td>
+                        <td className="px-3 py-2 whitespace-pre-wrap wrap-break-word text-zinc-700">{row.notes}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -537,9 +569,21 @@ export function WorkOrdersClient({
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/cotlogo.png" alt="Cot Medik" className="h-8 w-auto" />
+                    <img
+                      src="/cotlogo.png"
+                      alt="Cot Medik"
+                      width={96}
+                      height={22}
+                      className="report-logo h-[22px] w-[96px] object-contain"
+                    />
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-8 w-auto" />
+                    <img
+                      src="/liftlogo.jpeg"
+                      alt="Lift Medik"
+                      width={96}
+                      height={22}
+                      className="report-logo h-[22px] w-[96px] object-contain"
+                    />
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold tracking-wide">Work Order Report</p>
@@ -629,9 +673,21 @@ export function WorkOrdersClient({
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/cotlogo.png" alt="Cot Medik" className="h-8 w-auto" />
+                  <img
+                    src="/cotlogo.png"
+                    alt="Cot Medik"
+                    width={96}
+                    height={22}
+                    className="report-logo h-[22px] w-[96px] object-contain"
+                  />
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-8 w-auto" />
+                  <img
+                    src="/liftlogo.jpeg"
+                    alt="Lift Medik"
+                    width={96}
+                    height={22}
+                    className="report-logo h-[22px] w-[96px] object-contain"
+                  />
                 </div>
                 <div className="text-right">
                   <p className="text-lg font-bold tracking-wide">Work Order Report</p>
