@@ -6,6 +6,9 @@ import { LogOut } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
+const clientNavIconBtn =
+  "inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1";
+
 const allNavItems = [
   { href: "/portal", label: "Dashboard", roles: ["owner"] },
   { href: "/portal/employees", label: "Employees", roles: ["owner"] },
@@ -34,25 +37,33 @@ export function PortalNav({
   return (
     <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden bg-zinc-100 text-zinc-800 antialiased">
       <nav className="sticky top-0 z-20 border-b border-zinc-200 bg-white px-4 py-3 print:hidden sm:px-5 md:px-6">
-        <div className="flex min-w-0 items-center justify-between gap-3">
+        <div
+          className={cn(
+            "min-w-0",
+            role === "client" ? "w-full" : "flex items-center justify-between gap-3"
+          )}
+        >
           {role === "client" ? (
-            <>
-              <div className="w-9 shrink-0" />
+            <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <div className="min-w-0" aria-hidden />
               <div className="flex items-center justify-center gap-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/cotlogo.png" alt="Cot Medik" className="h-5 w-auto" />
+                <img src="/cotlogo.png" alt="Cot Medik" className="h-8 w-auto sm:h-9" />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-5 w-auto rounded-sm" />
+                <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-8 w-auto rounded-sm sm:h-9" />
               </div>
-              <button
-                onClick={handleSignOut}
-                aria-label="Sign Out"
-                title="Sign Out"
-                className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1"
-              >
-                <LogOut className="size-4" />
-              </button>
-            </>
+              <div className="flex min-w-0 items-center justify-end">
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  aria-label="Sign Out"
+                  title="Sign Out"
+                  className={clientNavIconBtn}
+                >
+                  <LogOut className="size-4" />
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="text-sm font-semibold tracking-tight text-zinc-900">Portal</div>
           )}
@@ -78,6 +89,7 @@ export function PortalNav({
           </div>
         )}
       </nav>
+
       <main className="min-w-0 flex-1 overflow-x-hidden p-4 print:p-0 sm:p-5 md:p-6">{children}</main>
       <footer
         className={cn(

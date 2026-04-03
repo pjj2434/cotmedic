@@ -27,7 +27,24 @@ export function printWorkOrderContent(
     .print-root { display: block; width: 100%; }
     .report-screen { display: none !important; }
     .report-print-sheet { display: block !important; width: 100%; }
-    .report-print-sheet .report-header { break-inside: avoid-page; page-break-inside: avoid; margin-bottom: 14px; }
+    .report-print-sheet .report-header {
+      break-inside: avoid-page;
+      page-break-inside: avoid;
+      margin-bottom: 14px;
+      width: 100% !important;
+      text-align: center !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+    }
+    .report-print-sheet .report-header-logos {
+      display: flex !important;
+      flex-direction: row !important;
+      justify-content: center !important;
+      align-items: center !important;
+      width: 100% !important;
+      gap: 16px !important;
+    }
     .report-print-sheet img.report-logo,
     .report-print-sheet .report-header img {
       display: inline-block !important;
@@ -42,6 +59,40 @@ export function printWorkOrderContent(
       flex: 0 0 auto !important;
     }
     .report-print-sheet .break-inside-avoid { break-inside: avoid-page; page-break-inside: avoid; }
+    .report-print-sheet .report-data-table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      table-layout: fixed !important;
+      font-size: 8.5px !important;
+      line-height: 1.35 !important;
+    }
+    .report-print-sheet .report-data-table th,
+    .report-print-sheet .report-data-table td {
+      border: 1px solid #000 !important;
+      padding: 4px 5px !important;
+      vertical-align: top !important;
+      word-wrap: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+    .report-print-sheet .report-data-table thead th {
+      background: #18181b !important;
+      color: #fff !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.04em !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .report-print-sheet .report-data-table .report-row-alt td {
+      background: #f4f4f5 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .report-print-sheet .report-data-table .cell-center { text-align: center !important; }
+    .report-print-sheet .report-data-table .cell-work { font-size: 8.5px !important; }
+    .report-print-sheet .report-data-table .cell-work p { margin: 0 0 3px 0 !important; }
+    .report-print-sheet .report-data-table .cell-work p:last-child { margin-bottom: 0 !important; }
+    .report-print-sheet .report-data-table .cell-label { font-weight: 700 !important; }
   `
     : `
     @page { size: 8.5in 11in; margin: 0.2in; }

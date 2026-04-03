@@ -1,5 +1,51 @@
 "use client";
 
+import * as React from "react";
+
+const WorkOrderFormCompactContext = React.createContext(false);
+
+function useWorkOrderFormCompact() {
+  return React.useContext(WorkOrderFormCompactContext);
+}
+
+/** Tighter layout for portal preview (less scrolling). Scoped to screen so @media print rules stay authoritative. */
+const compactPreviewCss = `
+  @media screen {
+    .wo-form-view.wo-form-view--compact .form-shell { padding: 8px 10px; }
+    .wo-form-view.wo-form-view--compact .form-card { max-width: min(100%, 680px); }
+    .wo-form-view.wo-form-view--compact .form-header { padding: 10px 14px 8px; gap: 10px; }
+    .wo-form-view.wo-form-view--compact .header-tagline { font-size: 8px; letter-spacing: 2px; }
+    .wo-form-view.wo-form-view--compact .header-badge { font-size: 10px; padding: 3px 8px; letter-spacing: 1px; }
+    .wo-form-view.wo-form-view--compact .logo-mark { padding: 4px 6px; }
+    .wo-form-view.wo-form-view--compact .logo-mark img { height: 26px !important; width: auto !important; }
+    .wo-form-view.wo-form-view--compact .form-body { padding: 12px 14px; }
+    .wo-form-view.wo-form-view--compact .section { margin-bottom: 12px; }
+    .wo-form-view.wo-form-view--compact .section-label { margin-bottom: 5px; font-size: 8px; letter-spacing: 2px; }
+    .wo-form-view.wo-form-view--compact .section-hint { font-size: 10px; margin: -3px 0 5px; line-height: 1.35; }
+    .wo-form-view.wo-form-view--compact .row-grid { gap: 6px; }
+    .wo-form-view.wo-form-view--compact .field-group { gap: 2px; }
+    .wo-form-view.wo-form-view--compact .field-group label { font-size: 7px; letter-spacing: 1.5px; }
+    .wo-form-view.wo-form-view--compact .field-input { padding: 4px 8px; font-size: 11px; line-height: 1.3; }
+    .wo-form-view.wo-form-view--compact .field-input[style*="min-height"] { min-height: 52px !important; }
+    .wo-form-view.wo-form-view--compact .parts-col-header { padding: 5px 8px; font-size: 9px; }
+    .wo-form-view.wo-form-view--compact .parts-row { padding: 3px 6px; }
+    .wo-form-view.wo-form-view--compact .parts-row .part-val { font-size: 11px; }
+    .wo-form-view.wo-form-view--compact .part-num { font-size: 9px; min-width: 18px; }
+    .wo-form-view.wo-form-view--compact .subsection { padding: 8px 10px; }
+    .wo-form-view.wo-form-view--compact .subsection-title { font-size: 10px; margin-bottom: 6px; letter-spacing: 1.2px; }
+    .wo-form-view.wo-form-view--compact .lock-row { gap: 10px; margin-top: 6px; }
+    .wo-form-view.wo-form-view--compact .toggle-label { font-size: 9px; }
+    .wo-form-view.wo-form-view--compact .toggle-val { font-size: 12px; }
+    .wo-form-view.wo-form-view--compact .auth-box { padding: 10px 12px; margin-bottom: 12px; }
+    .wo-form-view.wo-form-view--compact .auth-notice { font-size: 10px; margin-bottom: 8px; line-height: 1.4; }
+    .wo-form-view.wo-form-view--compact .form-footer { padding: 6px 14px; flex-wrap: wrap; gap: 4px; }
+    .wo-form-view.wo-form-view--compact .footer-address { font-size: 8px; line-height: 1.3; }
+    .wo-form-view.wo-form-view--compact .footer-phone { font-size: 9px; }
+    .wo-form-view.wo-form-view--compact .divider { margin: 12px 0; }
+    .wo-form-view.wo-form-view--compact .sig-cursive { font-size: 15px; }
+  }
+`;
+
 const cotStyles = `
   @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
   .wo-form-view { --border: #d0d0d0; --text: #111111; --text-dim: #777777; --mono: 'Roboto Mono', monospace; --sans: 'Roboto', sans-serif; --display: 'Roboto', sans-serif; }
@@ -130,13 +176,15 @@ const liftStyles = `
 `;
 
 function Field({ label, value, multiline, sig }: { label: string; value: string | undefined; multiline?: boolean; sig?: boolean }) {
+  const compact = useWorkOrderFormCompact();
   const v = value?.trim() || "";
+  const multilineMin = compact ? 52 : 96;
   return (
     <div className="field-group">
       {label ? <label>{label}</label> : null}
       <div
         className={`field-input ${!v ? "empty" : ""} ${sig ? "sig-cursive" : ""}`}
-        style={multiline ? { whiteSpace: "pre-wrap", minHeight: 96 } : undefined}
+        style={multiline ? { whiteSpace: "pre-wrap", minHeight: multilineMin } : undefined}
       >
         {v || "—"}
       </div>
@@ -228,6 +276,8 @@ function normalizeTime(value: string): string {
 }
 
 export function CotFormView({ form }: { form: FormData }) {
+  const compact = useWorkOrderFormCompact();
+  const stairMb = compact ? 8 : 14;
   const g = (k: string) => (form[k] as string) ?? "";
   const gDate = (k: string) => normalizeDate(g(k));
   const gTime = (k: string) => normalizeTime(g(k));
@@ -235,15 +285,21 @@ export function CotFormView({ form }: { form: FormData }) {
   const bool = (k: string) => form[k] as boolean | null | undefined;
 
   return (
-    <div className="wo-form-view">
-      <style>{cotStyles}</style>
+    <div className={compact ? "wo-form-view wo-form-view--compact" : "wo-form-view"}>
+      <style>{cotStyles + (compact ? compactPreviewCss : "")}</style>
       <div className="form-shell">
         <div className="form-card">
           <div className="form-header">
             <div className="header-brand">
               <div className="logo-mark">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/cotlogo.png" alt="Cot Medik" width={140} height={48} className="h-9 w-auto" />
+                <img
+                  src="/cotlogo.png"
+                  alt="Cot Medik"
+                  width={140}
+                  height={48}
+                  className={compact ? "h-7 w-auto" : "h-9 w-auto"}
+                />
               </div>
               <p className="header-tagline">Serving the Ambulance &amp; EMS Community</p>
             </div>
@@ -291,19 +347,21 @@ export function CotFormView({ form }: { form: FormData }) {
               <div className="section-label">Stair Chair</div>
               <div className="subsection">
                 <div className="subsection-title">Stair Chair Details</div>
-                <p className="section-hint" style={{ marginBottom: 14 }}>Help us track this unit and any lock bar work.</p>
-                <div className="row-grid cols-3" style={{ marginBottom: 14 }}>
+                <p className="section-hint" style={{ marginBottom: stairMb }}>
+                  Help us track this unit and any lock bar work.
+                </p>
+                <div className="row-grid cols-3" style={{ marginBottom: stairMb }}>
                   <Field label="Model" value={g("stairChairModel")} />
                   <Field label="Serial No." value={g("stairChairSN")} />
                 </div>
-                <div className="row-grid cols-3" style={{ marginBottom: 14 }}>
+                <div className="row-grid cols-3" style={{ marginBottom: stairMb }}>
                   {(() => {
                     const parts = (form.stairChairParts as string[]) ?? [];
                     const list = parts.length ? parts : [""];
                     return list.map((v, i) => <Field key={i} label={`Part ${i + 1}`} value={v} />);
                   })()}
                 </div>
-                <div className="field-group" style={{ marginBottom: 14 }}>
+                <div className="field-group" style={{ marginBottom: stairMb }}>
                   <Field label="Lock bar notes" value={g("lockBarIssue")} />
                 </div>
                 <div className="lock-row">
@@ -325,20 +383,27 @@ export function CotFormView({ form }: { form: FormData }) {
 }
 
 export function LiftFormView({ form }: { form: FormData }) {
+  const compact = useWorkOrderFormCompact();
   const g = (k: string) => (form[k] as string) ?? "";
   const gDate = (k: string) => normalizeDate(g(k));
   const gTime = (k: string) => normalizeTime(g(k));
 
   return (
-    <div className="wo-form-view">
-      <style>{liftStyles}</style>
+    <div className={compact ? "wo-form-view wo-form-view--compact" : "wo-form-view"}>
+      <style>{liftStyles + (compact ? compactPreviewCss : "")}</style>
       <div className="form-shell">
         <div className="form-card">
           <div className="form-header">
             <div className="header-brand">
               <div className="logo-mark">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/liftlogo.jpeg" alt="Lift Medik" width={140} height={48} className="h-9 w-auto" />
+                <img
+                  src="/liftlogo.jpeg"
+                  alt="Lift Medik"
+                  width={140}
+                  height={48}
+                  className={compact ? "h-7 w-auto" : "h-9 w-auto"}
+                />
               </div>
               <p className="header-tagline">Serving the Mobility Assist Community</p>
             </div>
@@ -395,9 +460,12 @@ export function LiftFormView({ form }: { form: FormData }) {
 export function WorkOrderFormView({
   type,
   formData,
+  compact = false,
 }: {
   type: string;
   formData: string | FormData | null | undefined;
+  /** Portal preview: tighter layout, less vertical scroll */
+  compact?: boolean;
 }) {
   let data: FormData = {};
   if (typeof formData === "string") {
@@ -411,5 +479,9 @@ export function WorkOrderFormView({
   } else {
     return <pre className="p-4 text-sm">No form data</pre>;
   }
-  return type === "lift" ? <LiftFormView form={data} /> : <CotFormView form={data} />;
+  return (
+    <WorkOrderFormCompactContext.Provider value={compact}>
+      {type === "lift" ? <LiftFormView form={data} /> : <CotFormView form={data} />}
+    </WorkOrderFormCompactContext.Provider>
+  );
 }

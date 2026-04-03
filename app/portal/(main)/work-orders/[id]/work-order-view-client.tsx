@@ -2,12 +2,20 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Printer, ArrowLeft, FileText, Image, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { WorkOrderFormView } from "@/components/work-order-form-view";
 import { printWorkOrderContent } from "@/lib/print-work-order";
 import { UploadDropzone } from "@/lib/uploadthing";
 import { toast } from "sonner";
+import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
+import { cn } from "@/lib/utils";
 
 type WorkOrder = {
   id: string;
@@ -30,11 +38,15 @@ type WorkOrderFile = {
 };
 
 export function WorkOrderViewClient({ id, role }: { id: string; role: string }) {
+  const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [files, setFiles] = useState<WorkOrderFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [previewEnlargedOpen, setPreviewEnlargedOpen] = useState(false);
   const printContentRef = useRef<HTMLDivElement>(null);
+
+  const canExpandPreview = role === "owner" || role === "client";
 
   useEffect(() => {
     fetch(`/api/work-orders?id=${encodeURIComponent(id)}`)
@@ -113,30 +125,79 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
 
   return (
     <div className="min-h-screen bg-zinc-100">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-4 py-3">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-3 py-2">
         <Button variant="outline" size="sm" asChild>
           <Link href="/portal/work-orders">
             <ArrowLeft className="mr-2 size-4" />
             Back
           </Link>
         </Button>
-        <Button size="sm" className="hidden sm:inline-flex" onClick={handlePrint}>
+        <Button
+          size="sm"
+          className={cn(
+            disablePrintOnMobilePwa ? "hidden" : "hidden sm:inline-flex"
+          )}
+          onClick={handlePrint}
+        >
           <Printer className="mr-2 size-4" />
           Print
         </Button>
       </div>
-      <div ref={printContentRef} className="p-4 sm:p-5">
-        <WorkOrderFormView type={workOrder.type} formData={workOrder.formData} />
+      <div
+        ref={printContentRef}
+        className={cn(
+          "px-2 py-2 sm:px-3 sm:py-3",
+          canExpandPreview &&
+            "cursor-zoom-in rounded-md transition-colors hover:bg-zinc-200/40 active:bg-zinc-200/70"
+        )}
+        role={canExpandPreview ? "button" : undefined}
+        tabIndex={canExpandPreview ? 0 : undefined}
+        aria-label={canExpandPreview ? "Enlarge work order preview" : undefined}
+        onClick={() => canExpandPreview && setPreviewEnlargedOpen(true)}
+        onKeyDown={(e) => {
+          if (!canExpandPreview) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setPreviewEnlargedOpen(true);
+          }
+        }}
+      >
+        {canExpandPreview && (
+          <p className="mb-2 text-center text-xs text-zinc-500">
+            Tap or click preview to enlarge
+          </p>
+        )}
+        <WorkOrderFormView type={workOrder.type} formData={workOrder.formData} compact />
       </div>
-      <div className="mx-4 mb-6 rounded-md border border-zinc-200 bg-white shadow-sm sm:mx-5">
-        <div className="border-b border-zinc-200 px-4 py-3">
+
+      {canExpandPreview && (
+        <Dialog open={previewEnlargedOpen} onOpenChange={setPreviewEnlargedOpen}>
+          <DialogContent
+            showCloseButton
+            className="max-h-[min(92vh,56rem)] w-[calc(100%-1.5rem)] max-w-5xl gap-3 overflow-y-auto p-4 sm:max-w-5xl sm:p-5"
+          >
+            <DialogHeader className="shrink-0">
+              <DialogTitle className="text-base">Work order</DialogTitle>
+            </DialogHeader>
+            <div className="min-w-0">
+              <WorkOrderFormView
+                type={workOrder.type}
+                formData={workOrder.formData}
+                compact={false}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+      <div className="mx-2 mb-4 rounded-md border border-zinc-200 bg-white shadow-sm sm:mx-3">
+        <div className="border-b border-zinc-200 px-3 py-2">
           <h2 className="text-sm font-semibold tracking-tight text-zinc-900">Work order files ({files.length})</h2>
           <p className="mt-1 text-xs text-zinc-500">
             Attachments specific to this work order.
           </p>
         </div>
         {canUpload && (
-          <div className="border-b border-zinc-200 p-4">
+          <div className="border-b border-zinc-200 p-3">
             <UploadDropzone
               endpoint="workOrderFileUploader"
               input={{ workOrderId: id }}
@@ -151,11 +212,11 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
           </div>
         )}
         {files.length === 0 ? (
-          <div className="p-6 text-center text-zinc-500">No files yet.</div>
+          <div className="p-4 text-center text-sm text-zinc-500">No files yet.</div>
         ) : (
           <div className="divide-y divide-zinc-100">
             {files.map((f) => (
-              <div key={f.id} className="flex items-center justify-between gap-3 px-4 py-3">
+              <div key={f.id} className="flex items-center justify-between gap-3 px-3 py-2">
                 <a
                   href={f.url}
                   target="_blank"
