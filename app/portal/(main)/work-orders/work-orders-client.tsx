@@ -27,7 +27,6 @@ import {
   AlertTriangle,
   LayoutList,
   Table2,
-  FolderOpen,
   Settings,
   Check,
   Copy,
@@ -545,17 +544,6 @@ export function WorkOrdersClient({
                 Track service history, filter by date, and print reports whenever you need them.
               </p>
               <div className="mt-6 flex flex-wrap gap-2.5">
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className="h-9 border-zinc-200/90 bg-white/90 shadow-sm hover:bg-white"
-                >
-                  <Link href="/portal/files">
-                    <FolderOpen className="mr-2 size-4 text-red-600" />
-                    Your files
-                  </Link>
-                </Button>
                 <Button
                   asChild
                   variant="outline"
