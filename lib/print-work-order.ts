@@ -63,13 +63,13 @@ export function printWorkOrderContent(
       width: 100% !important;
       border-collapse: collapse !important;
       table-layout: fixed !important;
-      font-size: 8.5px !important;
-      line-height: 1.35 !important;
+      font-size: 11px !important;
+      line-height: 1.4 !important;
     }
     .report-print-sheet .report-data-table th,
     .report-print-sheet .report-data-table td {
       border: 1px solid #000 !important;
-      padding: 4px 5px !important;
+      padding: 5px 6px !important;
       vertical-align: top !important;
       word-wrap: break-word !important;
       overflow-wrap: anywhere !important;
@@ -89,7 +89,28 @@ export function printWorkOrderContent(
       print-color-adjust: exact !important;
     }
     .report-print-sheet .report-data-table .cell-center { text-align: center !important; }
-    .report-print-sheet .report-data-table .cell-work { font-size: 8.5px !important; }
+    .report-print-sheet .report-data-table .cell-work { font-size: 11px !important; }
+    .report-print-sheet .report-list-card {
+      padding: 10px 12px !important;
+      margin-bottom: 12px !important;
+      break-inside: avoid-page !important;
+      page-break-inside: avoid !important;
+      border: 2px solid #000 !important;
+    }
+    .report-print-sheet .report-list-card-title {
+      border-bottom: 2px solid #000 !important;
+      padding-bottom: 6px !important;
+      margin: 0 0 8px 0 !important;
+      font-size: 12px !important;
+      font-weight: 800 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.06em !important;
+    }
+    .report-print-sheet .report-list-card-body,
+    .report-print-sheet .report-list-card-extra {
+      font-size: 11px !important;
+      line-height: 1.45 !important;
+    }
     .report-print-sheet .report-data-table .cell-work p { margin: 0 0 3px 0 !important; }
     .report-print-sheet .report-data-table .cell-work p:last-child { margin-bottom: 0 !important; }
     .report-print-sheet .report-data-table .cell-label { font-weight: 700 !important; }

@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { printWorkOrderContent } from "@/lib/print-work-order";
 import { cn } from "@/lib/utils";
+import { isLocationPortalRole } from "@/lib/portal-roles";
 import {
   Dialog,
   DialogContent,
@@ -146,19 +147,6 @@ function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
   }
 }
 
-/** Split pipe-separated detail pairs across two lines for print/report readability. */
-function splitDetailsForReport(details: string): { line1: string; line2: string } {
-  if (!details || details === "—") return { line1: "—", line2: "" };
-  const parts = details.split(" | ").map((s) => s.trim()).filter(Boolean);
-  if (parts.length === 0) return { line1: "—", line2: "" };
-  if (parts.length === 1) return { line1: parts[0], line2: "" };
-  const mid = Math.ceil(parts.length / 2);
-  return {
-    line1: parts.slice(0, mid).join(" | "),
-    line2: parts.slice(mid).join(" | "),
-  };
-}
-
 type WorkOrderReportRow = {
   id: string;
   date: string;
@@ -174,6 +162,19 @@ type WorkOrderReportRow = {
   technician: string;
   type: string;
 };
+
+/** Split pipe-separated detail pairs across two lines for print/report readability. */
+function splitDetailsForReport(details: string): { line1: string; line2: string } {
+  if (!details || details === "—") return { line1: "—", line2: "" };
+  const parts = details.split(" | ").map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return { line1: "—", line2: "" };
+  if (parts.length === 1) return { line1: parts[0], line2: "" };
+  const mid = Math.ceil(parts.length / 2);
+  return {
+    line1: parts.slice(0, mid).join(" | "),
+    line2: parts.slice(mid).join(" | "),
+  };
+}
 
 function ReportPrintHeader({ recordCount }: { recordCount: number }) {
   return (
@@ -208,78 +209,75 @@ function ReportPrintHeader({ recordCount }: { recordCount: number }) {
   );
 }
 
-function ReportDataTable({ rows }: { rows: WorkOrderReportRow[] }) {
+function ReportDataTable({
+  rows,
+  density = "print",
+}: {
+  rows: WorkOrderReportRow[];
+  density?: "print" | "screen";
+}) {
   if (rows.length === 0) {
     return <p className="text-sm text-zinc-600">No rows match current filters.</p>;
   }
+  const cell =
+    density === "screen" ? "text-sm px-3 py-2.5" : "text-[11px] px-2 py-2 leading-snug";
+  const head =
+    density === "screen" ? "text-sm px-3 py-3" : "text-[11px] px-2 py-2.5 leading-tight";
   return (
     <table className="report-data-table w-full border-collapse text-left text-black">
       <colgroup>
-        <col style={{ width: "7%" }} />
-        <col style={{ width: "8%" }} />
-        <col style={{ width: "11%" }} />
         <col style={{ width: "10%" }} />
-        <col style={{ width: "9%" }} />
-        <col style={{ width: "9%" }} />
-        <col style={{ width: "6%" }} />
-        <col style={{ width: "6%" }} />
-        <col style={{ width: "34%" }} />
+        <col style={{ width: "14%" }} />
+        <col style={{ width: "12%" }} />
+        <col style={{ width: "28%" }} />
+        <col style={{ width: "36%" }} />
       </colgroup>
       <thead>
         <tr>
           <th
             scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-[9px] font-bold tracking-wide text-white uppercase"
+            className={cn(
+              "border border-zinc-900 bg-zinc-900 font-bold tracking-wide text-white uppercase",
+              head
+            )}
           >
             Date
           </th>
           <th
             scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-[9px] font-bold tracking-wide text-white uppercase"
-          >
-            Type
-          </th>
-          <th
-            scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-[9px] font-bold tracking-wide text-white uppercase"
-          >
-            Customer
-          </th>
-          <th
-            scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-[9px] font-bold tracking-wide text-white uppercase"
+            className={cn(
+              "border border-zinc-900 bg-zinc-900 font-bold tracking-wide text-white uppercase",
+              head
+            )}
           >
             Technician
           </th>
           <th
             scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-[9px] font-bold tracking-wide text-white uppercase"
+            className={cn(
+              "border border-zinc-900 bg-zinc-900 font-bold tracking-wide text-white uppercase",
+              head
+            )}
           >
-            Serial
+            Ambulance / Bus
           </th>
           <th
             scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-[9px] font-bold tracking-wide text-white uppercase"
+            className={cn(
+              "border border-zinc-900 bg-zinc-900 font-bold tracking-wide text-white uppercase",
+              head
+            )}
           >
-            Amb/Bus
+            Description
           </th>
           <th
             scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-center text-[9px] font-bold tracking-wide text-white uppercase"
+            className={cn(
+              "border border-zinc-900 bg-zinc-900 font-bold tracking-wide text-white uppercase",
+              head
+            )}
           >
-            Adj
-          </th>
-          <th
-            scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-center text-[9px] font-bold tracking-wide text-white uppercase"
-          >
-            Lock
-          </th>
-          <th
-            scope="col"
-            className="border border-zinc-900 bg-zinc-900 px-1.5 py-2 text-[9px] font-bold tracking-wide text-white uppercase"
-          >
-            Work &amp; details
+            Parts used
           </th>
         </tr>
       </thead>
@@ -289,53 +287,188 @@ function ReportDataTable({ rows }: { rows: WorkOrderReportRow[] }) {
             key={row.id}
             className={cn(i % 2 === 1 && "report-row-alt bg-zinc-100/80")}
           >
-            <td className="border border-zinc-800 px-1.5 py-1.5 text-[9px] text-zinc-900">
+            <td
+              className={cn(
+                "border border-zinc-800 text-zinc-900 whitespace-nowrap",
+                cell
+              )}
+            >
               {new Date(row.date).toLocaleDateString()}
             </td>
-            <td className="border border-zinc-800 px-1.5 py-1.5 text-[9px] text-zinc-900">{row.type}</td>
-            <td className="border border-zinc-800 px-1.5 py-1.5 text-[9px] text-zinc-900 wrap-break-word">
-              {row.customer}
-            </td>
-            <td className="border border-zinc-800 px-1.5 py-1.5 text-[9px] text-zinc-900 wrap-break-word">
+            <td className={cn("border border-zinc-800 text-zinc-900 wrap-break-word", cell)}>
               {row.technician}
             </td>
-            <td className="border border-zinc-800 px-1.5 py-1.5 text-[9px] text-zinc-900 wrap-break-word">
-              {row.serial}
-            </td>
-            <td className="border border-zinc-800 px-1.5 py-1.5 text-[9px] text-zinc-900 wrap-break-word">
+            <td className={cn("border border-zinc-800 text-zinc-900 wrap-break-word", cell)}>
               {row.ambulance}
             </td>
-            <td className="cell-center border border-zinc-800 px-1 py-1.5 text-center text-[9px] text-zinc-900">
-              {row.adjusted}
+            <td
+              className={cn(
+                "border border-zinc-800 leading-snug text-zinc-900 wrap-break-word whitespace-pre-wrap",
+                cell
+              )}
+            >
+              {row.notes}
             </td>
-            <td className="cell-center border border-zinc-800 px-1 py-1.5 text-center text-[9px] text-zinc-900">
-              {row.lockBarReplaced}
-            </td>
-            <td className="cell-work border border-zinc-800 px-1.5 py-1.5 text-[9px] leading-snug text-zinc-900 wrap-break-word whitespace-pre-wrap">
-              <p className="mb-1.5 last:mb-0">{row.notes}</p>
-              {row.partsUsed !== "—" && (
-                <p className="mb-1.5 last:mb-0">
-                  <span className="cell-label font-semibold text-zinc-950">Parts used: </span>
-                  {row.partsUsed}
-                </p>
+            <td
+              className={cn(
+                "border border-zinc-800 leading-snug text-zinc-900 wrap-break-word whitespace-pre-wrap",
+                cell
               )}
-              {row.partsNeeded !== "—" && (
-                <p className="mb-1.5 last:mb-0">
-                  <span className="cell-label font-semibold text-zinc-950">Parts needed: </span>
-                  {row.partsNeeded}
-                </p>
-              )}
-              {row.details !== "—" && (
-                <p className="mb-0">
-                  <span className="cell-label font-semibold text-zinc-950">Details: </span>
-                  {row.details}
-                </p>
-              )}
+            >
+              {row.partsUsed}
             </td>
           </tr>
         ))}
       </tbody>
     </table>
+  );
+}
+
+function ReportPrintList({
+  rows,
+  density,
+}: {
+  rows: WorkOrderReportRow[];
+  density: "print" | "screen";
+}) {
+  if (rows.length === 0) {
+    return <p className="text-sm text-zinc-600">No rows match current filters.</p>;
+  }
+  const screen = density === "screen";
+  return (
+    <div className={cn("space-y-3", screen && "space-y-4")}>
+      {rows.map((row) => {
+        const { line1, line2 } = splitDetailsForReport(row.details);
+        return (
+          <div
+            key={row.id}
+            className={cn(
+              screen
+                ? "rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6"
+                : "report-list-card break-inside-avoid border-2 border-black bg-white"
+            )}
+          >
+            <p
+              className={cn(
+                "font-bold uppercase tracking-wide text-zinc-900",
+                screen ? "border-b border-zinc-200 pb-2 text-base sm:text-lg" : "report-list-card-title"
+              )}
+            >
+              {new Date(row.date).toLocaleDateString()} · {row.type}
+            </p>
+            <div
+              className={cn(
+                "space-y-1 text-zinc-800",
+                screen ? "mt-3 text-sm sm:text-base leading-relaxed" : "report-list-card-body mt-2 space-y-1"
+              )}
+            >
+              <p>
+                <span className={cn("font-semibold text-zinc-900", screen && "text-zinc-950")}>
+                  Technician:{" "}
+                </span>
+                {row.technician}
+              </p>
+              <p>
+                <span className={cn("font-semibold text-zinc-900", screen && "text-zinc-950")}>
+                  Ambulance / Bus:{" "}
+                </span>
+                {row.ambulance}
+              </p>
+              <p>
+                <span className={cn("font-semibold text-zinc-900", screen && "text-zinc-950")}>
+                  Parts used:{" "}
+                </span>
+                <span className="whitespace-pre-wrap">{row.partsUsed}</span>
+              </p>
+            </div>
+            <div
+              className={cn(
+                "text-zinc-700",
+                screen
+                  ? "mt-4 space-y-2 border-t border-zinc-200 pt-4 text-sm sm:text-[15px] leading-relaxed"
+                  : "report-list-card-extra mt-2 space-y-1 border-t border-black pt-2"
+              )}
+            >
+              <p>
+                <span className="font-semibold text-zinc-900">Customer:</span> {row.customer}
+              </p>
+              <p>
+                <span className="font-semibold text-zinc-900">Serial:</span> {row.serial}
+              </p>
+              {row.type === "Cot Medik" && (
+                <p>
+                  <span className="font-semibold text-zinc-900">Adjusted / Lock bar:</span>{" "}
+                  {row.adjusted} / {row.lockBarReplaced}
+                </p>
+              )}
+              <p className="whitespace-pre-wrap">
+                <span className="font-semibold text-zinc-900">Notes:</span> {row.notes}
+              </p>
+              {row.partsNeeded !== "—" && (
+                <p className="whitespace-pre-wrap">
+                  <span className="font-semibold text-zinc-900">Parts needed:</span> {row.partsNeeded}
+                </p>
+              )}
+              {row.details !== "—" && (
+                <div className="whitespace-pre-wrap">
+                  <p className="font-semibold text-zinc-900">Details:</p>
+                  <p>{line1}</p>
+                  {line2 ? <p>{line2}</p> : null}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReportFormatToggle({
+  value,
+  onChange,
+  className,
+}: {
+  value: "list" | "table";
+  onChange: (v: "list" | "table") => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "inline-flex rounded-lg border border-zinc-200 bg-zinc-50/80 p-0.5 shadow-sm",
+        className
+      )}
+      role="group"
+      aria-label="Report layout"
+    >
+      <button
+        type="button"
+        onClick={() => onChange("table")}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors sm:text-sm",
+          value === "table"
+            ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200/80"
+            : "text-zinc-600 hover:text-zinc-900"
+        )}
+      >
+        <Table2 className="size-3.5 sm:size-4" strokeWidth={2} />
+        Table
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("list")}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors sm:text-sm",
+          value === "list"
+            ? "bg-white text-zinc-900 shadow-sm ring-1 ring-zinc-200/80"
+            : "text-zinc-600 hover:text-zinc-900"
+        )}
+      >
+        <LayoutList className="size-3.5 sm:size-4" strokeWidth={2} />
+        List
+      </button>
+    </div>
   );
 }
 
@@ -366,6 +499,9 @@ export function WorkOrdersClient({
   userName: string;
   userId: string;
 }) {
+  const clientLike = isLocationPortalRole(role);
+  const showOwnerStyleFilters = role === "owner" || role === "administrator";
+
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("all");
@@ -381,9 +517,9 @@ export function WorkOrdersClient({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customersLoading, setCustomersLoading] = useState(false);
   const reportPrintRef = useRef<HTMLDivElement>(null);
-  const [reportPrintFormat, setReportPrintFormat] = useState<"list" | "table">("list");
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
-  const [dialogPrintFormat, setDialogPrintFormat] = useState<"list" | "table">("list");
+  const [reportPrintFormat, setReportPrintFormat] = useState<"list" | "table">("table");
+  const [dialogPrintFormat, setDialogPrintFormat] = useState<"list" | "table">("table");
   const [printRunId, setPrintRunId] = useState(0);
   const [clientListLimit, setClientListLimit] = useState(CLIENT_WORK_ORDERS_PAGE_SIZE);
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
@@ -458,7 +594,7 @@ export function WorkOrdersClient({
   }, [workType, fetchCustomers]);
 
   useEffect(() => {
-    if (role !== "client") return;
+    if (!isLocationPortalRole(role)) return;
     setClientListLimit(CLIENT_WORK_ORDERS_PAGE_SIZE);
   }, [
     role,
@@ -488,10 +624,10 @@ export function WorkOrdersClient({
     return true;
   });
 
-  const clientVisibleOrders =
-    role === "client" ? filteredOrders.slice(0, clientListLimit) : filteredOrders;
-  const clientHasMore =
-    role === "client" && filteredOrders.length > clientListLimit;
+  const clientVisibleOrders = clientLike
+    ? filteredOrders.slice(0, clientListLimit)
+    : filteredOrders;
+  const clientHasMore = clientLike && filteredOrders.length > clientListLimit;
 
   const reportRows: WorkOrderReportRow[] = filteredOrders.map((o) => {
     const parsed = extractSearchFields(o);
@@ -530,7 +666,7 @@ export function WorkOrdersClient({
 
   return (
     <div className="space-y-6">
-      {role === "client" ? (
+      {clientLike ? (
         <div className="overflow-hidden rounded-2xl border border-red-100/90 bg-linear-to-br from-white via-red-50/40 to-zinc-50 shadow-md shadow-zinc-200/30 ring-1 ring-red-100/50">
           <div className="flex flex-col gap-6 px-5 py-6 sm:px-7 sm:py-8 md:flex-row md:items-stretch md:gap-0 md:py-7">
             <div className="min-w-0 flex-1 md:pr-8">
@@ -581,7 +717,9 @@ export function WorkOrdersClient({
           <p className="mt-2 text-zinc-500">
             {role === "owner"
               ? "View and filter all repair reports."
-              : "Start a new repair or view your completed work."}
+              : role === "administrator"
+                ? "View and filter work orders for your assigned locations."
+                : "Start a new repair or view your completed work."}
           </p>
         </div>
       )}
@@ -662,7 +800,7 @@ export function WorkOrdersClient({
       <div
         className={cn(
           "border bg-white shadow-sm",
-          role === "client"
+          clientLike
             ? "rounded-2xl border-zinc-200/80 shadow-md shadow-zinc-200/20 ring-1 ring-zinc-100/80"
             : "rounded-md border-zinc-200"
         )}
@@ -670,15 +808,21 @@ export function WorkOrdersClient({
         <div
           className={cn(
             "flex flex-col gap-4 border-b p-4 sm:flex-row sm:items-center sm:justify-between",
-            role === "client" ? "border-zinc-100 bg-zinc-50/60 sm:px-5" : "border-zinc-200"
+            clientLike ? "border-zinc-100 bg-zinc-50/60 sm:px-5" : "border-zinc-200"
           )}
         >
-          <h2 className={role === "client" ? "text-base font-semibold tracking-tight text-zinc-900 sm:text-lg" : "font-medium text-zinc-900"}>
+          <h2
+            className={
+              clientLike
+                ? "text-base font-semibold tracking-tight text-zinc-900 sm:text-lg"
+                : "font-medium text-zinc-900"
+            }
+          >
             {role === "owner" ? "All work orders" : "Your work orders"}
           </h2>
-          {(role === "owner" || role === "client") && (
+          {role !== "technician" && (
             <div className="grid w-full grid-cols-1 items-stretch gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-              {role === "owner" && (
+              {showOwnerStyleFilters && (
                 <div className="flex min-w-0 flex-col justify-end gap-1">
                   <Label className="min-h-4.5 text-xs font-medium leading-none text-zinc-600">
                     Type
@@ -718,7 +862,7 @@ export function WorkOrdersClient({
                   placeholder="End date"
                 />
               </div>
-              {role === "owner" && (
+              {showOwnerStyleFilters && (
                 <div className="flex min-w-0 flex-col justify-end gap-1">
                   <Label className="min-h-4.5 text-xs font-medium leading-none text-zinc-600">
                     Customer
@@ -788,27 +932,6 @@ export function WorkOrdersClient({
                   Clear filters
                 </Button>
               </div>
-              {!disablePrintOnMobilePwa && (
-                <div className="flex min-w-0 flex-col justify-end gap-1">
-                  <span className="min-h-4.5" aria-hidden />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={
-                      role === "client"
-                        ? "h-7 min-h-7 w-full border-red-600 bg-red-600 text-xs text-white hover:border-red-700 hover:bg-red-700 hover:text-white"
-                        : "h-7 min-h-7 w-full text-xs"
-                    }
-                    onClick={() => {
-                      setDialogPrintFormat(reportPrintFormat);
-                      setPrintDialogOpen(true);
-                    }}
-                  >
-                    <Printer className="mr-1.5 size-3.5" />
-                    Print report
-                  </Button>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -816,13 +939,13 @@ export function WorkOrdersClient({
           <div
             className={cn(
               "p-8 text-center text-zinc-500",
-              role === "client" && "py-12 text-sm"
+              clientLike && "py-12 text-sm"
             )}
           >
             Loading…
           </div>
         ) : filteredOrders.length === 0 ? (
-          role === "client" ? (
+          clientLike ? (
             <div className="p-6 sm:p-8">
               <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/70 px-6 py-10 text-center">
                 <FileText className="mx-auto size-11 text-red-200" strokeWidth={1.25} />
@@ -839,7 +962,7 @@ export function WorkOrdersClient({
           <>
             <div
               className={cn(
-                role === "client"
+                clientLike
                   ? "space-y-2 p-3 sm:space-y-2.5 sm:p-4"
                   : "divide-y divide-zinc-200"
               )}
@@ -850,13 +973,13 @@ export function WorkOrdersClient({
                   href={`/portal/work-orders/${o.id}`}
                   className={cn(
                     "flex items-center justify-between gap-3 transition-colors",
-                    role === "client"
+                    clientLike
                       ? "group rounded-xl border border-zinc-100 bg-white px-3 py-3.5 shadow-sm hover:border-red-100 hover:bg-red-50/35 hover:shadow-md sm:px-4"
                       : "border-l-2 border-transparent px-4 py-3 hover:border-zinc-300 hover:bg-zinc-50"
                   )}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {role === "client" && (
+                    {clientLike && (
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100/90 text-red-700 shadow-inner shadow-red-200/20">
                         <FileText className="size-5" strokeWidth={2} />
                       </div>
@@ -864,7 +987,7 @@ export function WorkOrdersClient({
                     <div className="min-w-0">
                       <p
                         className={cn(
-                          role === "client"
+                          clientLike
                             ? "text-base font-semibold tracking-tight text-zinc-900"
                             : "text-sm font-medium text-zinc-900 sm:text-base"
                         )}
@@ -873,14 +996,14 @@ export function WorkOrdersClient({
                       </p>
                       <p
                         className={cn(
-                          role === "client"
+                          clientLike
                             ? "mt-0.5 text-sm text-zinc-600"
                             : "text-xs text-zinc-500 sm:text-sm"
                         )}
                       >
                         {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
                       </p>
-                      {role === "owner" && !o.hasFiles && (
+                      {showOwnerStyleFilters && !o.hasFiles && (
                         <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">
                           <AlertTriangle className="size-3.5" />
                           No file attached
@@ -891,7 +1014,7 @@ export function WorkOrdersClient({
                   <ChevronRight
                     className={cn(
                       "size-4 shrink-0 text-zinc-400",
-                      role === "client" && "transition-transform group-hover:translate-x-0.5 group-hover:text-red-500"
+                      clientLike && "transition-transform group-hover:translate-x-0.5 group-hover:text-red-500"
                     )}
                   />
                 </Link>
@@ -918,11 +1041,11 @@ export function WorkOrdersClient({
         )}
       </div>
 
-      {(role === "owner" || role === "client") && (
+      {(role === "owner" || clientLike) && (
         <div
           className={cn(
             "border border-zinc-200 bg-white shadow-sm",
-            role === "client"
+            clientLike
               ? "rounded-2xl border-zinc-200/80 shadow-md shadow-zinc-200/20 ring-1 ring-zinc-100/80"
               : "rounded-md"
           )}
@@ -930,13 +1053,43 @@ export function WorkOrdersClient({
           <div
             className={cn(
               "border-b px-4 py-3",
-              role === "client" ? "border-zinc-100 bg-zinc-50/60 sm:px-5" : "border-zinc-200"
+              clientLike ? "border-zinc-100 bg-zinc-50/60 sm:px-5" : "border-zinc-200"
             )}
           >
-            <h3 className="font-medium text-zinc-900">Report table ({reportRows.length})</h3>
-            <p className="mt-1 text-xs text-zinc-500">
-              Uses current filters. Print to export a paper/PDF report.
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h3 className="font-medium text-zinc-900">Print preview ({reportRows.length})</h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Choose Table or List, then print. Table includes description and parts; list shows full detail.
+                  Uses current filters.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col gap-2 self-stretch sm:flex-row sm:items-center sm:gap-3">
+                <ReportFormatToggle
+                  value={reportPrintFormat}
+                  onChange={setReportPrintFormat}
+                  className="self-start sm:self-center"
+                />
+                {!disablePrintOnMobilePwa && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "h-8 w-full text-xs sm:w-auto",
+                      clientLike &&
+                        "border-red-600 bg-red-600 text-white hover:border-red-700 hover:bg-red-700 hover:text-white"
+                    )}
+                    onClick={() => {
+                      setDialogPrintFormat(reportPrintFormat);
+                      setPrintDialogOpen(true);
+                    }}
+                  >
+                    <Printer className="mr-1.5 size-3.5" />
+                    Print report
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
           <div>
             <style>{`
@@ -962,8 +1115,26 @@ export function WorkOrdersClient({
                   width: 100% !important;
                   border-collapse: collapse !important;
                   table-layout: fixed !important;
-                  font-size: 8.5px !important;
-                  line-height: 1.35 !important;
+                  font-size: 11px !important;
+                  line-height: 1.4 !important;
+                }
+                .report-print-sheet-inline .report-list-card {
+                  padding: 10px 12px !important;
+                  margin-bottom: 12px !important;
+                  break-inside: avoid !important;
+                  page-break-inside: avoid !important;
+                }
+                .report-print-sheet-inline .report-list-card-title {
+                  border-bottom: 2px solid #000 !important;
+                  padding-bottom: 6px !important;
+                  margin: 0 0 8px 0 !important;
+                  font-size: 12px !important;
+                  font-weight: 800 !important;
+                }
+                .report-print-sheet-inline .report-list-card-body,
+                .report-print-sheet-inline .report-list-card-extra {
+                  font-size: 11px !important;
+                  line-height: 1.45 !important;
                 }
                 .report-print-sheet-inline .report-data-table th,
                 .report-print-sheet-inline .report-data-table td {
@@ -988,166 +1159,56 @@ export function WorkOrdersClient({
             `}</style>
 
             <div className="report-screen">
-              <div className="hidden overflow-x-auto md:block">
-                <table className="min-w-[1120px] w-full table-fixed text-sm">
-                  <thead className="bg-zinc-50 text-left text-zinc-600">
-                    <tr>
-                      <th className="w-[9%] px-3 py-2 font-medium">Date</th>
-                      <th className="w-[11%] px-3 py-2 font-medium">Serial #</th>
-                      <th className="w-[12%] px-3 py-2 font-medium">Ambulance/Bus</th>
-                      <th className="w-[14%] px-3 py-2 font-medium">Customer</th>
-                      <th className="w-[12%] px-3 py-2 font-medium">Technician</th>
-                      <th className="w-[9%] px-3 py-2 font-medium">Type</th>
-                      <th className="w-[7%] px-2 py-2 font-medium">Adjusted</th>
-                      <th className="w-[9%] px-2 py-2 font-medium">Lock bar</th>
-                      <th className="w-[17%] px-3 py-2 font-medium">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportRows.map((row) => (
-                      <tr key={row.id} className="border-t border-zinc-100 align-top">
-                        <td className="px-3 py-2 text-zinc-700">{new Date(row.date).toLocaleDateString()}</td>
-                        <td className="px-3 py-2 wrap-break-word text-zinc-700">{row.serial}</td>
-                        <td className="px-3 py-2 wrap-break-word text-zinc-700">{row.ambulance}</td>
-                        <td className="px-3 py-2 wrap-break-word text-zinc-900">{row.customer}</td>
-                        <td className="px-3 py-2 wrap-break-word text-zinc-700">{row.technician}</td>
-                        <td className="px-3 py-2 text-zinc-700">{row.type}</td>
-                        <td className="px-2 py-2 text-center text-zinc-700">{row.adjusted}</td>
-                        <td className="px-2 py-2 text-center text-zinc-700">{row.lockBarReplaced}</td>
-                        <td className="px-3 py-2 whitespace-pre-wrap wrap-break-word text-zinc-700">{row.notes}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="hidden p-4 md:block">
+                <div className="rounded-lg border border-zinc-200 bg-white">
+                  {reportPrintFormat === "table" ? (
+                    <div className="overflow-x-auto">
+                      <ReportDataTable rows={reportRows} density="screen" />
+                    </div>
+                  ) : (
+                    <div className="p-2 sm:p-3">
+                      <ReportPrintList rows={reportRows} density="screen" />
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="space-y-2.5 p-3 md:hidden">
+              <div className="p-3 md:hidden">
                 {reportRows.length === 0 ? (
-                  <div className="border border-zinc-200 p-4 text-center text-sm text-zinc-500">
+                  <div className="rounded-xl border border-zinc-200 p-6 text-center text-base text-zinc-500">
                     No rows match current filters.
                   </div>
-                ) : (
-                  reportRows.map((row) => (
-                    <div key={row.id} className="border border-zinc-200 bg-zinc-50/40 p-3">
-                      <p className="text-sm font-semibold text-zinc-900 leading-tight">
-                        {row.customer}
-                      </p>
-                      <p className="mt-0.5 text-xs text-zinc-600">
-                        {new Date(row.date).toLocaleDateString()} · {row.type}
-                      </p>
-                      <div className="mt-2 space-y-1 text-xs text-zinc-700">
-                        <p><span className="font-medium">Technician:</span> {row.technician}</p>
-                        <p><span className="font-medium">Serial:</span> {row.serial}</p>
-                        <p><span className="font-medium">Ambulance/Bus:</span> {row.ambulance}</p>
-                        {row.type === "Cot Medik" && (
-                          <>
-                            <p><span className="font-medium">Adjusted:</span> {row.adjusted}</p>
-                            <p><span className="font-medium">Lock bar replaced:</span> {row.lockBarReplaced}</p>
-                          </>
-                        )}
-                      </div>
-                      <p className="mt-2 border-t border-zinc-200 pt-2 text-xs text-zinc-700 whitespace-pre-wrap">
-                        <span className="font-medium">Notes:</span> {row.notes}
-                      </p>
+                ) : reportPrintFormat === "table" ? (
+                  <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+                    <div className="min-w-[640px]">
+                      <ReportDataTable rows={reportRows} density="screen" />
                     </div>
-                  ))
+                  </div>
+                ) : (
+                  <ReportPrintList rows={reportRows} density="screen" />
                 )}
               </div>
             </div>
 
             <div className="report-print-sheet-inline bg-white p-6 text-black">
               <ReportPrintHeader recordCount={reportRows.length} />
-              {reportPrintFormat === "table" ? (
-                <div className="mt-1">
+              <div className="mt-1">
+                {reportPrintFormat === "table" ? (
                   <ReportDataTable rows={reportRows} />
-                </div>
-              ) : reportRows.length === 0 ? (
-                <p className="text-sm text-zinc-600">No rows match current filters.</p>
-              ) : (
-                <div className="space-y-4">
-                  {reportRows.map((row) => (
-                    <div
-                      key={row.id}
-                      className="break-inside-avoid border-[3px] border-black bg-white p-4 shadow-[0_2px_0_0_#000]"
-                    >
-                      <p className="border-b-2 border-black pb-2 text-sm font-bold uppercase tracking-[0.08em]">
-                        {new Date(row.date).toLocaleDateString()} · {row.type}
-                      </p>
-                      <p className="mt-2 text-xs leading-relaxed">
-                        Customer: {row.customer} | Technician: {row.technician}
-                      </p>
-                      <p className="text-xs leading-relaxed">Serial: {row.serial} | Ambulance/Bus: {row.ambulance}</p>
-                      {row.type === "Cot Medik" && (
-                        <p className="mt-1 text-xs leading-relaxed">
-                          Adjusted: {row.adjusted} | Lock bar replaced: {row.lockBarReplaced}
-                        </p>
-                      )}
-                      <p className="mt-2 border-t border-black pt-2 text-xs leading-relaxed whitespace-pre-wrap">
-                        <span className="font-bold">Notes:</span> {row.notes}
-                      </p>
-                      <p className="mt-1 text-xs leading-relaxed whitespace-pre-wrap">
-                        <span className="font-bold">Parts Used:</span> {row.partsUsed}
-                      </p>
-                      <p className="mt-1 text-xs leading-relaxed whitespace-pre-wrap">
-                        <span className="font-bold">Parts Needed:</span> {row.partsNeeded}
-                      </p>
-                      {(() => {
-                        const { line1, line2 } = splitDetailsForReport(row.details);
-                        return (
-                          <div className="mt-1 text-xs leading-relaxed">
-                            <p className="font-bold">Details:</p>
-                            <p className="whitespace-pre-wrap">{line1}</p>
-                            {line2 ? <p className="whitespace-pre-wrap">{line2}</p> : null}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  ))}
-                </div>
-              )}
+                ) : (
+                  <ReportPrintList rows={reportRows} density="print" />
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {(role === "owner" || role === "client") && (
+      {(role === "owner" || clientLike) && (
         <div className="hidden">
           <div ref={reportPrintRef} data-work-order-print>
             <div className="report-print-sheet bg-white p-6 text-black">
               <style>{`
-              .report-box {
-                border: 3px solid #000 !important;
-                background: #fff !important;
-                padding: 14px !important;
-                margin-bottom: 14px !important;
-                break-inside: avoid-page;
-                page-break-inside: avoid;
-              }
-              .report-box-title {
-                border-bottom: 2px solid #000 !important;
-                padding-bottom: 8px !important;
-                margin: 0 0 10px 0 !important;
-                font-size: 13px !important;
-                font-weight: 800 !important;
-                text-transform: uppercase !important;
-                letter-spacing: 0.08em !important;
-              }
-              .report-line {
-                margin: 4px 0 !important;
-                font-size: 12px !important;
-                line-height: 1.45 !important;
-              }
-              .report-block {
-                margin-top: 8px !important;
-                border-top: 1px solid #000 !important;
-                padding-top: 8px !important;
-                font-size: 12px !important;
-                line-height: 1.45 !important;
-                white-space: pre-wrap;
-              }
-              .report-label {
-                font-weight: 800 !important;
-              }
               .report-header {
                 width: 100% !important;
                 text-align: center !important;
@@ -1167,13 +1228,13 @@ export function WorkOrdersClient({
                 width: 100% !important;
                 border-collapse: collapse !important;
                 table-layout: fixed !important;
-                font-size: 8.5px !important;
-                line-height: 1.35 !important;
+                font-size: 11px !important;
+                line-height: 1.4 !important;
               }
               .report-data-table th,
               .report-data-table td {
                 border: 1px solid #000 !important;
-                padding: 4px 5px !important;
+                padding: 5px 6px !important;
                 vertical-align: top !important;
                 word-wrap: break-word !important;
               }
@@ -1187,65 +1248,41 @@ export function WorkOrdersClient({
               .report-data-table .report-row-alt td {
                 background: #f4f4f5 !important;
               }
-              .report-data-table .cell-center { text-align: center !important; }
-              .report-data-table .cell-work p { margin: 0 0 3px 0 !important; }
-              .report-data-table .cell-work p:last-child { margin-bottom: 0 !important; }
-              .report-data-table .cell-label { font-weight: 700 !important; }
+              .report-list-card {
+                padding: 10px 12px !important;
+                margin-bottom: 12px !important;
+                break-inside: avoid-page !important;
+                page-break-inside: avoid !important;
+              }
+              .report-list-card-title {
+                border-bottom: 2px solid #000 !important;
+                padding-bottom: 6px !important;
+                margin: 0 0 8px 0 !important;
+                font-size: 12px !important;
+                font-weight: 800 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.06em !important;
+              }
+              .report-list-card-body,
+              .report-list-card-extra {
+                font-size: 11px !important;
+                line-height: 1.45 !important;
+              }
             `}</style>
               <ReportPrintHeader recordCount={reportRows.length} />
-              {reportPrintFormat === "table" ? (
-                <div className="mt-1">
+              <div className="mt-1">
+                {reportPrintFormat === "table" ? (
                   <ReportDataTable rows={reportRows} />
-                </div>
-              ) : reportRows.length === 0 ? (
-                <p className="text-sm text-zinc-600">No rows match current filters.</p>
-              ) : (
-                <div className="space-y-4">
-                  {reportRows.map((row) => (
-                    <div key={row.id} className="report-box">
-                      <p className="report-box-title">
-                        {new Date(row.date).toLocaleDateString()} · {row.type}
-                      </p>
-                      <p className="report-line">
-                        Customer: {row.customer} | Technician: {row.technician}
-                      </p>
-                      <p className="report-line">Serial: {row.serial} | Ambulance/Bus: {row.ambulance}</p>
-                      {row.type === "Cot Medik" && (
-                        <p className="report-line">
-                          Adjusted: {row.adjusted} | Lock bar replaced: {row.lockBarReplaced}
-                        </p>
-                      )}
-                      <p className="report-block">
-                        <span className="report-label">Notes:</span> {row.notes}
-                      </p>
-                      <p className="report-line whitespace-pre-wrap">
-                        <span className="report-label">Parts Used:</span> {row.partsUsed}
-                      </p>
-                      <p className="report-line whitespace-pre-wrap">
-                        <span className="report-label">Parts Needed:</span> {row.partsNeeded}
-                      </p>
-                      {(() => {
-                        const { line1, line2 } = splitDetailsForReport(row.details);
-                        return (
-                          <>
-                            <p className="report-line">
-                              <span className="report-label">Details:</span>
-                            </p>
-                            <p className="report-line whitespace-pre-wrap">{line1}</p>
-                            {line2 ? <p className="report-line whitespace-pre-wrap">{line2}</p> : null}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  ))}
-                </div>
-              )}
+                ) : (
+                  <ReportPrintList rows={reportRows} density="print" />
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {(role === "owner" || role === "client") && (
+      {(role === "owner" || clientLike) && (
         <Dialog
           open={printDialogOpen}
           onOpenChange={(open) => {
@@ -1254,92 +1291,36 @@ export function WorkOrdersClient({
           }}
         >
           <DialogContent
-            className="gap-0 overflow-hidden border-zinc-200/90 bg-linear-to-b from-white to-zinc-50/95 p-0 shadow-2xl sm:max-w-[440px]"
+            className="gap-0 overflow-hidden border-zinc-200/90 bg-linear-to-b from-white to-zinc-50/95 p-0 shadow-2xl sm:max-w-2xl"
             showCloseButton
             closeButtonClassName="top-3.5 right-3.5 text-zinc-500 hover:text-zinc-900"
           >
             <div className="border-b border-zinc-200/80 bg-white px-5 pb-4 pt-5">
-              <DialogHeader className="gap-1.5">
-                <DialogTitle className="text-lg font-semibold tracking-tight text-zinc-900">
-                  Print work order report
-                </DialogTitle>
+              <DialogHeader className="gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <DialogTitle className="text-lg font-semibold tracking-tight text-zinc-900">
+                    Print work order report
+                  </DialogTitle>
+                  <ReportFormatToggle value={dialogPrintFormat} onChange={setDialogPrintFormat} />
+                </div>
                 <DialogDescription className="text-sm text-zinc-600">
-                  Choose a layout. Current filters apply ({reportRows.length} record
-                  {reportRows.length === 1 ? "" : "s"}).
+                  Preview matches what will print. {reportRows.length} record
+                  {reportRows.length === 1 ? "" : "s"} with current filters.
                 </DialogDescription>
               </DialogHeader>
             </div>
-            <div className="space-y-3 px-5 py-4" role="radiogroup" aria-label="Report layout">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={dialogPrintFormat === "list"}
-                onClick={() => setDialogPrintFormat("list")}
-                className={cn(
-                  "flex w-full items-start gap-3 rounded-xl border-2 p-4 text-left transition-all outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2",
-                  dialogPrintFormat === "list"
-                    ? "border-red-500 bg-red-50/40 shadow-sm"
-                    : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50/90"
+            <div className="max-h-[min(56vh,480px)] overflow-auto px-5 py-4">
+              <div className="rounded-lg border border-zinc-200 bg-white">
+                {dialogPrintFormat === "table" ? (
+                  <div className="overflow-x-auto">
+                    <ReportDataTable rows={reportRows} density="screen" />
+                  </div>
+                ) : (
+                  <div className="p-2 sm:p-3">
+                    <ReportPrintList rows={reportRows} density="screen" />
+                  </div>
                 )}
-              >
-                <span
-                  className={cn(
-                    "mt-1 flex size-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-colors",
-                    dialogPrintFormat === "list"
-                      ? "border-red-600 bg-red-600"
-                      : "border-zinc-300 bg-white"
-                  )}
-                  aria-hidden
-                >
-                  {dialogPrintFormat === "list" ? (
-                    <span className="size-2 rounded-full bg-white" />
-                  ) : null}
-                </span>
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white shadow-inner">
-                  <LayoutList className="size-5" strokeWidth={2} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-zinc-900">List view</span>
-                  <span className="mt-0.5 block text-sm leading-snug text-zinc-600">
-                    One card per work order — detailed blocks, best for long notes and filing.
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={dialogPrintFormat === "table"}
-                onClick={() => setDialogPrintFormat("table")}
-                className={cn(
-                  "flex w-full items-start gap-3 rounded-xl border-2 p-4 text-left transition-all outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 focus-visible:ring-offset-2",
-                  dialogPrintFormat === "table"
-                    ? "border-red-500 bg-red-50/40 shadow-sm"
-                    : "border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50/90"
-                )}
-              >
-                <span
-                  className={cn(
-                    "mt-1 flex size-[18px] shrink-0 items-center justify-center rounded-full border-2 transition-colors",
-                    dialogPrintFormat === "table"
-                      ? "border-red-600 bg-red-600"
-                      : "border-zinc-300 bg-white"
-                  )}
-                  aria-hidden
-                >
-                  {dialogPrintFormat === "table" ? (
-                    <span className="size-2 rounded-full bg-white" />
-                  ) : null}
-                </span>
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white shadow-inner">
-                  <Table2 className="size-5" strokeWidth={2} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-zinc-900">Table view</span>
-                  <span className="mt-0.5 block text-sm leading-snug text-zinc-600">
-                    Compact grid with a dark header and striped rows — great for scanning many orders.
-                  </span>
-                </span>
-              </button>
+              </div>
             </div>
             <DialogFooter className="mx-0 mb-0 rounded-b-xl border-t border-zinc-200/80 bg-white px-6 pb-6 pt-4 sm:justify-end sm:gap-3">
               <Button type="button" variant="outline" size="sm" onClick={() => setPrintDialogOpen(false)}>
@@ -1349,7 +1330,7 @@ export function WorkOrdersClient({
                 type="button"
                 size="sm"
                 className={
-                  role === "client"
+                  clientLike
                     ? "bg-red-600 text-white hover:bg-red-700"
                     : "bg-zinc-900 text-white hover:bg-zinc-800"
                 }
@@ -1367,7 +1348,7 @@ export function WorkOrdersClient({
         </Dialog>
       )}
 
-      {role === "client" && (
+      {clientLike && (
         <Dialog
           open={assistanceDialogOpen}
           onOpenChange={(open) => {

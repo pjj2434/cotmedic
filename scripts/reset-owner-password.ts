@@ -99,12 +99,12 @@ async function main() {
 
   await db
     .update(userTable)
-    .set({ resetPassword: true, updatedAt: now })
+    .set({ resetPassword: false, updatedAt: now })
     .where(eq(userTable.id, ownerId));
 
   console.log("Owner password reset.");
   console.log("  User ID:", normalizedUsername);
-  console.log("  They must sign in and will be prompted to set a new password at /portal/change-password.");
+  console.log("  They can sign in with the new password.");
 }
 
 main().catch((err) => {

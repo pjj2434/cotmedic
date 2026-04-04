@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { ChangePasswordForm } from "@/components/change-password-form";
-
+/** Legacy URL: password changes happen under Settings. */
 export default function ChangePasswordPage() {
-  return <ChangePasswordForm variant="forced" />;
+  redirect("/portal/settings/password");
 }

@@ -16,6 +16,7 @@ import { UploadDropzone } from "@/lib/uploadthing";
 import { toast } from "sonner";
 import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
 import { cn } from "@/lib/utils";
+import { isLocationPortalRole } from "@/lib/portal-roles";
 
 type WorkOrder = {
   id: string;
@@ -46,7 +47,7 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
   const [previewEnlargedOpen, setPreviewEnlargedOpen] = useState(false);
   const printContentRef = useRef<HTMLDivElement>(null);
 
-  const canExpandPreview = role === "owner" || role === "client";
+  const canExpandPreview = role === "owner" || isLocationPortalRole(role);
 
   useEffect(() => {
     fetch(`/api/work-orders?id=${encodeURIComponent(id)}`)

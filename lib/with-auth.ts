@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 
-export type Role = "owner" | "technician" | "client";
+export type Role = "owner" | "technician" | "client" | "employee" | "administrator";
 
 export type WithAuthOptions = {
   /** If provided, user must have one of these roles. Otherwise redirects to /portal */

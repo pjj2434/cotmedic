@@ -55,6 +55,8 @@ const technicianAc = ac.newRole({
   session: ["list"],
 });
 const clientAc = ac.newRole({ user: [], session: [] });
+const employeeAc = ac.newRole({ user: [], session: [] });
+const administratorAc = ac.newRole({ user: [], session: [] });
 
 export const auth = betterAuth({
   baseURL: getAuthBaseUrl(),
@@ -75,6 +77,16 @@ export const auth = betterAuth({
         input: true,
       },
       customerType: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+      locationId: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+      managedLocationIds: {
         type: "string",
         required: false,
         input: true,
@@ -101,6 +113,8 @@ export const auth = betterAuth({
         owner: ownerAc,
         technician: technicianAc,
         client: clientAc,
+        employee: employeeAc,
+        administrator: administratorAc,
       },
     }),
   ],

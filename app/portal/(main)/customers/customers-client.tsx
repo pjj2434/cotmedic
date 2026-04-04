@@ -5,6 +5,7 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2 } from "lucide-react";
+import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, Pencil } from "lucide-react";
+import { parseManagedLocationIds } from "@/lib/portal-access";
 
 type User = {
   id: string;
@@ -39,7 +41,41 @@ type User = {
   role?: string;
   banned?: boolean;
   customerType?: string;
+  locationId?: string | null;
+  managedLocationIds?: string | null;
 };
+
+type AccountKind = "location" | "employee" | "administrator";
+
+function roleToAccountKind(role: string | undefined): AccountKind {
+  if (role === "employee") return "employee";
+  if (role === "administrator") return "administrator";
+  return "location";
+}
+
+function accountKindToRole(kind: AccountKind): "client" | "employee" | "administrator" {
+  if (kind === "location") return "client";
+  if (kind === "employee") return "employee";
+  return "administrator";
+}
+
+function accountTypeLabel(role: string | undefined): string {
+  if (role === "employee") return "Employee";
+  if (role === "administrator") return "Administrator";
+  return "Location";
+}
+
+function emptyCreateForm() {
+  return {
+    name: "",
+    userId: "",
+    password: "",
+    customerType: "cot" as "cot" | "lift" | "both",
+    accountKind: "location" as AccountKind,
+    employeeLocationId: "",
+    adminLocationIds: [] as string[],
+  };
+}
 
 export function CustomersClient() {
   const [users, setUsers] = useState<User[]>([]);
@@ -50,43 +86,75 @@ export function CustomersClient() {
   const [resetUser, setResetUser] = useState<User | null>(null);
   const [resetPassword, setResetPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    name: "",
-    userId: "",
-    password: "",
-    customerType: "cot" as "cot" | "lift" | "both",
-  });
+  const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [resetError, setResetError] = useState("");
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removeUser, setRemoveUser] = useState<User | null>(null);
   const [removeLoading, setRemoveLoading] = useState(false);
+  const [locationOptions, setLocationOptions] = useState<{ id: string; name: string }[]>([]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [editKind, setEditKind] = useState<AccountKind>("location");
+  const [editCustomerType, setEditCustomerType] = useState<"cot" | "lift" | "both">("cot");
+  const [editEmployeeLocationId, setEditEmployeeLocationId] = useState("");
+  const [editAdminLocationIds, setEditAdminLocationIds] = useState<string[]>([]);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
 
   function getUserId(u: User) {
     if (u.username?.trim()) return u.username;
     return u.email.replace(/@cotmedic\.local$/i, "");
   }
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
+  const fetchLocations = useCallback(async () => {
     try {
       const { data: res } = await authClient.admin.listUsers({
-        query: {
-          filterField: "role",
-          filterValue: "client",
-          filterOperator: "eq",
-          limit: 500,
-          ...(search.trim()
-            ? {
-                searchValue: search.trim(),
-                searchField: "name" as const,
-                searchOperator: "contains" as const,
-              }
-            : {}),
-        },
+        query: { filterField: "role", filterValue: "client", filterOperator: "eq", limit: 500 },
       });
-      setUsers((res as { users?: User[] })?.users ?? []);
+      const list = (res as { users?: User[] })?.users ?? [];
+      setLocationOptions(list.map((x) => ({ id: x.id, name: x.name })));
+    } catch {
+      setLocationOptions([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (createOpen || editOpen) void fetchLocations();
+  }, [createOpen, editOpen, fetchLocations]);
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    const searchOpts = search.trim()
+      ? {
+          searchValue: search.trim(),
+          searchField: "name" as const,
+          searchOperator: "contains" as const,
+        }
+      : {};
+    try {
+      const roles = ["client", "employee", "administrator"] as const;
+      const results = await Promise.all(
+        roles.map((filterValue) =>
+          authClient.admin.listUsers({
+            query: {
+              filterField: "role",
+              filterValue,
+              filterOperator: "eq",
+              limit: 500,
+              ...searchOpts,
+            },
+          })
+        )
+      );
+      const byId = new Map<string, User>();
+      for (const r of results) {
+        for (const u of (r.data as { users?: User[] })?.users ?? []) {
+          byId.set(u.id, u as User);
+        }
+      }
+      setUsers(Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name)));
     } catch {
       setUsers([]);
     } finally {
@@ -102,28 +170,47 @@ export function CustomersClient() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreateError("");
+    if (createForm.accountKind === "employee" && !createForm.employeeLocationId) {
+      setCreateError("Select a location for this employee.");
+      return;
+    }
+    if (createForm.accountKind === "administrator" && createForm.adminLocationIds.length === 0) {
+      setCreateError("Select at least one location for this administrator.");
+      return;
+    }
     setCreateLoading(true);
     try {
       const username = createForm.userId.trim().toLowerCase();
-      const { data, error } = await authClient.admin.createUser({
+      const role = accountKindToRole(createForm.accountKind);
+      const data: Record<string, unknown> = { username };
+      if (createForm.accountKind === "location") {
+        data.customerType = createForm.customerType;
+      }
+      if (createForm.accountKind === "employee") {
+        data.locationId = createForm.employeeLocationId;
+      }
+      if (createForm.accountKind === "administrator") {
+        data.managedLocationIds = JSON.stringify(createForm.adminLocationIds);
+      }
+      const { data: created, error } = await authClient.admin.createUser({
         email: `${username}@cotmedic.local`,
         password: createForm.password,
         name: createForm.name.trim(),
-        // @ts-expect-error - admin plugin types default to user|admin; we use custom roles
-        role: "client",
-        data: { resetPassword: true, username, customerType: createForm.customerType },
+        // @ts-expect-error custom roles
+        role,
+        data,
       });
       if (error) {
-        setCreateError((error as { message?: string })?.message ?? "Failed to create customer");
+        setCreateError((error as { message?: string })?.message ?? "Failed to create account");
         return;
       }
-      if (data) {
+      if (created) {
         setCreateOpen(false);
-        setCreateForm({ name: "", userId: "", password: "", customerType: "cot" });
+        setCreateForm(emptyCreateForm());
         fetchUsers();
       }
     } catch {
-      setCreateError("Failed to create customer");
+      setCreateError("Failed to create account");
     } finally {
       setCreateLoading(false);
     }
@@ -155,10 +242,6 @@ export function CustomersClient() {
         return;
       }
       await authClient.admin.revokeUserSessions({ userId: resetUser.id });
-      await authClient.admin.updateUser({
-        userId: resetUser.id,
-        data: { resetPassword: true },
-      });
       setResetOpen(false);
       setResetUser(null);
     } catch {
@@ -168,13 +251,74 @@ export function CustomersClient() {
     }
   }
 
+  function openEdit(u: User) {
+    setEditUser(u);
+    setEditError("");
+    const kind = roleToAccountKind(u.role);
+    setEditKind(kind);
+    const ct = (u.customerType ?? "cot").trim().toLowerCase();
+    setEditCustomerType(
+      ct === "lift" ? "lift" : ct === "both" ? "both" : "cot"
+    );
+    setEditEmployeeLocationId(u.locationId?.trim() || "");
+    setEditAdminLocationIds(parseManagedLocationIds(u.managedLocationIds));
+    setEditOpen(true);
+  }
+
+  async function handleEditSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editUser) return;
+    setEditError("");
+    if (editKind === "employee" && !editEmployeeLocationId) {
+      setEditError("Select a location.");
+      return;
+    }
+    if (editKind === "administrator" && editAdminLocationIds.length === 0) {
+      setEditError("Select at least one location.");
+      return;
+    }
+    setEditLoading(true);
+    try {
+      const role = accountKindToRole(editKind);
+      const data: Record<string, unknown> = { role };
+      if (editKind === "location") {
+        data.customerType = editCustomerType;
+        data.locationId = null;
+        data.managedLocationIds = null;
+      } else if (editKind === "employee") {
+        data.locationId = editEmployeeLocationId;
+        data.managedLocationIds = null;
+        data.customerType = null;
+      } else {
+        data.managedLocationIds = JSON.stringify(editAdminLocationIds);
+        data.locationId = null;
+        data.customerType = null;
+      }
+      const { error } = await authClient.admin.updateUser({
+        userId: editUser.id,
+        data,
+      });
+      if (error) {
+        setEditError((error as { message?: string })?.message ?? "Failed to update");
+        return;
+      }
+      setEditOpen(false);
+      setEditUser(null);
+      fetchUsers();
+    } catch {
+      setEditError("Failed to update");
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
   async function handleBan(user: User) {
     try {
       const { error } = await authClient.admin.banUser({ userId: user.id });
       if (error) throw error;
       fetchUsers();
     } catch {
-      // Ignore for now
+      // Ignore
     }
   }
 
@@ -184,7 +328,7 @@ export function CustomersClient() {
       if (error) throw error;
       fetchUsers();
     } catch {
-      // Ignore for now
+      // Ignore
     }
   }
 
@@ -209,41 +353,62 @@ export function CustomersClient() {
     }
   }
 
+  function toggleAdminLocation(id: string, checked: boolean) {
+    setCreateForm((p) => {
+      const set = new Set(p.adminLocationIds);
+      if (checked) set.add(id);
+      else set.delete(id);
+      return { ...p, adminLocationIds: [...set] };
+    });
+  }
+
+  function toggleEditAdminLocation(id: string, checked: boolean) {
+    setEditAdminLocationIds((prev) => {
+      const set = new Set(prev);
+      if (checked) set.add(id);
+      else set.delete(id);
+      return [...set];
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-900">Customers</h1>
-          <p className="mt-1 text-sm text-zinc-500">Manage customer accounts.</p>
+          <h1 className="text-2xl font-semibold text-zinc-900">Locations &amp; logins</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Locations (single site), employees tied to one location, or administrators with multiple
+            locations. Existing accounts stay as locations until you change them.
+          </p>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="bg-red-600 hover:bg-red-700">
           <UserPlus className="size-4" />
-          Create customer
+          Create account
         </Button>
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:p-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
-          <Input
-            placeholder="Search by name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        {search && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSearch("")}
-            aria-label="Clear search"
-            className="sm:self-auto self-end"
-          >
-            <X className="size-4" />
-          </Button>
-        )}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
+            <Input
+              placeholder="Search by name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          {search && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              className="self-end sm:self-auto"
+            >
+              <X className="size-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -251,7 +416,7 @@ export function CustomersClient() {
         {loading ? (
           <div className="p-8 text-center text-zinc-500">Loading…</div>
         ) : users.length === 0 ? (
-          <div className="p-8 text-center text-zinc-500">No customers found.</div>
+          <div className="p-8 text-center text-zinc-500">No accounts found.</div>
         ) : (
           <div className="divide-y divide-zinc-100">
             {users.map((u) => (
@@ -260,8 +425,11 @@ export function CustomersClient() {
                 className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium text-zinc-900">{u.name}</p>
+                    <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700">
+                      {accountTypeLabel(u.role)}
+                    </span>
                     {u.banned && (
                       <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
                         Locked
@@ -271,6 +439,15 @@ export function CustomersClient() {
                   <p className="text-sm text-zinc-500">User ID: {getUserId(u)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1 sm:gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEdit(u)}
+                    className="shrink-0"
+                  >
+                    <Pencil className="size-4" />
+                    Edit type
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -318,18 +495,38 @@ export function CustomersClient() {
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[min(90vh,40rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Create customer</DialogTitle>
+            <DialogTitle>Create account</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-4" autoComplete="nope">
             {createError && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{createError}</p>
             )}
-            {/* Hidden fields to prevent Chrome from autofilling the real inputs */}
             <div className="absolute -left-[9999px] opacity-0" aria-hidden>
               <input type="text" name="prevent_autofill" tabIndex={-1} autoComplete="nope" />
               <input type="password" name="prevent_autofill_pwd" tabIndex={-1} autoComplete="new-password" />
+            </div>
+            <div className="space-y-2">
+              <Label>Account type</Label>
+              <Select
+                value={createForm.accountKind}
+                onValueChange={(v) =>
+                  setCreateForm((p) => ({
+                    ...p,
+                    accountKind: v as AccountKind,
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="location">Location</SelectItem>
+                  <SelectItem value="employee">Employee (one location)</SelectItem>
+                  <SelectItem value="administrator">Administrator (multiple locations)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Name</Label>
@@ -341,27 +538,75 @@ export function CustomersClient() {
                 autoComplete="nope"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Customer type</Label>
-              <Select
-                value={createForm.customerType}
-                onValueChange={(v) =>
-                  setCreateForm((p) => ({
-                    ...p,
-                    customerType: v as "cot" | "lift" | "both",
-                  }))
-                }
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="cot">Cot Medik</SelectItem>
-                  <SelectItem value="lift">Lift Medik</SelectItem>
-                  <SelectItem value="both">Both</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {createForm.accountKind === "location" && (
+              <div className="space-y-2">
+                <Label>Customer type</Label>
+                <Select
+                  value={createForm.customerType}
+                  onValueChange={(v) =>
+                    setCreateForm((p) => ({
+                      ...p,
+                      customerType: v as "cot" | "lift" | "both",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cot">Cot Medik</SelectItem>
+                    <SelectItem value="lift">Lift Medik</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {createForm.accountKind === "employee" && (
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Select
+                  value={createForm.employeeLocationId || "__none__"}
+                  onValueChange={(v) =>
+                    setCreateForm((p) => ({
+                      ...p,
+                      employeeLocationId: v === "__none__" ? "" : v,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select location…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Select…</SelectItem>
+                    {locationOptions.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {createForm.accountKind === "administrator" && (
+              <div className="space-y-2">
+                <Label>Locations</Label>
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-zinc-200 p-3">
+                  {locationOptions.length === 0 ? (
+                    <p className="text-sm text-zinc-500">Create at least one location first.</p>
+                  ) : (
+                    locationOptions.map((loc) => (
+                      <label key={loc.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={createForm.adminLocationIds.includes(loc.id)}
+                          onCheckedChange={(c) => toggleAdminLocation(loc.id, c === true)}
+                        />
+                        <span>{loc.name}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>User ID</Label>
               <Input
@@ -391,6 +636,102 @@ export function CustomersClient() {
               </Button>
               <Button type="submit" disabled={createLoading} className="bg-red-600 hover:bg-red-700">
                 {createLoading ? "Creating…" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-h-[min(90vh,40rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit account type — {editUser?.name}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSave} className="space-y-4">
+            {editError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</p>
+            )}
+            <div className="space-y-2">
+              <Label>Account type</Label>
+              <Select
+                value={editKind}
+                onValueChange={(v) => setEditKind(v as AccountKind)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="location">Location</SelectItem>
+                  <SelectItem value="employee">Employee (one location)</SelectItem>
+                  <SelectItem value="administrator">Administrator (multiple locations)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editKind === "location" && (
+              <div className="space-y-2">
+                <Label>Customer type</Label>
+                <Select
+                  value={editCustomerType}
+                  onValueChange={(v) => setEditCustomerType(v as "cot" | "lift" | "both")}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cot">Cot Medik</SelectItem>
+                    <SelectItem value="lift">Lift Medik</SelectItem>
+                    <SelectItem value="both">Both</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {editKind === "employee" && (
+              <div className="space-y-2">
+                <Label>Location</Label>
+                <Select
+                  value={editEmployeeLocationId || "__none__"}
+                  onValueChange={(v) => setEditEmployeeLocationId(v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select location…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Select…</SelectItem>
+                    {locationOptions.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {editKind === "administrator" && (
+              <div className="space-y-2">
+                <Label>Locations</Label>
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-zinc-200 p-3">
+                  {locationOptions.length === 0 ? (
+                    <p className="text-sm text-zinc-500">No locations yet.</p>
+                  ) : (
+                    locationOptions.map((loc) => (
+                      <label key={loc.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={editAdminLocationIds.includes(loc.id)}
+                          onCheckedChange={(c) => toggleEditAdminLocation(loc.id, c === true)}
+                        />
+                        <span>{loc.name}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editLoading} className="bg-red-600 hover:bg-red-700">
+                {editLoading ? "Saving…" : "Save"}
               </Button>
             </DialogFooter>
           </form>
@@ -441,8 +782,7 @@ export function CustomersClient() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove account?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete {removeUser?.name}. This action
-              cannot be undone.
+              This will permanently delete {removeUser?.name}. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

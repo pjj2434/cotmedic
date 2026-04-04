@@ -16,14 +16,18 @@ export const user = sqliteTable("user", {
   image: text("image"),
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
-  // Admin plugin: role (owner | technician | client)
+  // Admin plugin: owner | technician | client | employee | administrator
   role: text("role"),
   resetPassword: integer("resetPassword", { mode: "boolean" }),
   banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("banReason"),
   banExpires: text("banExpires"),
-  // Customer type for role=client: "cot" | "lift"
+  // Customer type for role=client (location): "cot" | "lift" | "both"
   customerType: text("customerType"),
+  /** role=employee: user id of the location (client) this login belongs to */
+  locationId: text("locationId"),
+  /** role=administrator: JSON string array of location (client) user ids */
+  managedLocationIds: text("managedLocationIds"),
 });
 
 // Client files (PDF, images) – stored in UploadThing, metadata in DB

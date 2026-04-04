@@ -102,7 +102,7 @@ export function EmployeesClient() {
         name: createForm.name.trim(),
         // @ts-expect-error - admin plugin types default to user|admin; we use custom roles
         role: "technician",
-        data: { resetPassword: true, username },
+        data: { username },
       });
       if (error) {
         setCreateError(
@@ -150,10 +150,6 @@ export function EmployeesClient() {
         return;
       }
       await authClient.admin.revokeUserSessions({ userId: resetUser.id });
-      await authClient.admin.updateUser({
-        userId: resetUser.id,
-        data: { resetPassword: true },
-      });
       setResetOpen(false);
       setResetUser(null);
     } catch {

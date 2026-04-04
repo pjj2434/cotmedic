@@ -7,7 +7,9 @@ export default async function WorkOrderViewPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { role } = await withAuth({ roles: ["owner", "technician", "client"] });
+  const { role } = await withAuth({
+    roles: ["owner", "technician", "client", "employee", "administrator"],
+  });
   const { id } = await params;
   if (!id) redirect("/portal/work-orders");
   return <WorkOrderViewClient id={id} role={role} />;

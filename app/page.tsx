@@ -7,13 +7,6 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -67,7 +60,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-100">
+    <div className="relative flex min-h-screen w-full flex-col overflow-hidden bg-zinc-100 lg:flex-row">
       {/* Subtle ECG-like accent line */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <svg
@@ -84,38 +77,26 @@ export default function LoginPage() {
         </svg>
       </div>
 
-      <div className="relative z-10 flex w-full max-w-md flex-col items-center px-6">
-        {/* Logos on light panel so dark marks remain visible */}
-        <div className="mb-10 flex flex-col items-center justify-center gap-3 rounded-2xl bg-white px-8 py-6 shadow-lg ring-1 ring-zinc-200">
-          <Image
-            src="/cotlogo.png"
-            alt="Cot Medik Inc."
-            width={220}
-            height={72}
-            priority
-            className="h-auto w-[200px] sm:w-[240px]"
-          />
-          <Image
-            src="/liftlogo.jpeg"
-            alt="Lift Medik"
-            width={220}
-            height={72}
-            priority
-            className="h-auto w-[200px] sm:w-[240px]"
-          />
-        </div>
+      {/* Cot Medik — left on desktop, top on mobile */}
+      <div className="relative z-10 flex flex-1 items-center justify-center px-6 py-8 lg:min-h-0 lg:py-12">
+        <Image
+          src="/cotlogo.png"
+          alt="Cot Medik Inc."
+          width={220}
+          height={72}
+          priority
+          className="h-auto w-[min(200px,70vw)] sm:w-[220px]"
+        />
+      </div>
 
-        <Card className="w-full border-zinc-200 bg-white shadow-xl ring-1 ring-zinc-200/80">
-          <CardHeader className="space-y-1 pb-6 text-center">
-            <CardTitle className="text-xl font-semibold text-zinc-900">
-              Customer Portal Login
-            </CardTitle>
-            <CardDescription className="text-zinc-500">
-              Enter your credentials to access the portal
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Login — center */}
+      <div className="relative z-10 flex w-full shrink-0 flex-col justify-center px-6 py-10 lg:w-[min(100%,26rem)] lg:px-8">
+        <div className="w-full space-y-6">
+          <div className="space-y-1 text-center">
+            <h1 className="text-xl font-semibold text-zinc-900">Customer Portal Login</h1>
+            <p className="text-sm text-zinc-500">Enter your credentials to access the portal</p>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div
                   role="alert"
@@ -163,13 +144,24 @@ export default function LoginPage() {
               >
                 {isLoading ? "Signing in..." : "Sign in"}
               </Button>
-            </form>
-          </CardContent>
-        </Card>
+          </form>
+        </div>
 
         <p className="mt-8 text-center text-sm text-zinc-500">
           © {new Date().getFullYear()} Cot/Liftmedik. All rights reserved.
         </p>
+      </div>
+
+      {/* Lift Medik — right on desktop, bottom on mobile */}
+      <div className="relative z-10 flex flex-1 items-center justify-center px-6 py-8 lg:min-h-0 lg:py-12">
+        <Image
+          src="/liftlogo.png"
+          alt="Lift Medik"
+          width={220}
+          height={72}
+          priority
+          className="h-auto w-[min(200px,70vw)] sm:w-[220px]"
+        />
       </div>
     </div>
   );

@@ -1,14 +1,20 @@
 import { withAuthApi } from "@/lib/with-auth";
 import { db } from "@/db";
 import { workOrder, user, workOrderFile } from "@/db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, inArray, type SQL } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import {
+  appendWorkOrderCustomerScopeConditions,
+  workOrderCustomerScope,
+} from "@/lib/portal-access";
 
 export type WorkOrderType = "cot" | "lift";
 
-/** GET - List work orders. Owner sees all, technician sees own, client sees their orders. */
+/** GET - List work orders. Owner sees all, technician sees own, location portal roles see scoped customers. */
 export async function GET(request: Request) {
-  const authResult = await withAuthApi({ roles: ["owner", "technician", "client"] });
+  const authResult = await withAuthApi({
+    roles: ["owner", "technician", "client", "employee", "administrator"],
+  });
   if (authResult instanceof NextResponse) return authResult;
   const { user: authUser, role } = authResult;
 
@@ -18,12 +24,20 @@ export async function GET(request: Request) {
   const customerId = searchParams.get("customerId");
   const technicianId = searchParams.get("technicianId");
 
-  const conditions = [];
+  const conditions: SQL[] = [];
   if (id) conditions.push(eq(workOrder.id, id));
   if (role === "technician") conditions.push(eq(workOrder.technicianId, authUser.id));
-  if (role === "client") conditions.push(eq(workOrder.customerId, authUser.id));
+  if (role === "client" || role === "employee" || role === "administrator") {
+    const scope = workOrderCustomerScope(role, authUser);
+    const scopeResult = appendWorkOrderCustomerScopeConditions(scope, conditions);
+    if (scopeResult === "empty") {
+      if (id) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ workOrders: [] });
+    }
+  }
   if (type) conditions.push(eq(workOrder.type, type));
-  if (customerId && role !== "client") conditions.push(eq(workOrder.customerId, customerId));
+  if (customerId && role !== "client" && role !== "employee")
+    conditions.push(eq(workOrder.customerId, customerId));
   if (technicianId && role === "owner") conditions.push(eq(workOrder.technicianId, technicianId));
 
   const orders = await db

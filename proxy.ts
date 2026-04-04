@@ -29,7 +29,7 @@ export function proxy(request: NextRequest) {
   // Don't redirect / to /portal here—cookie can be stale (banned/revoked).
   // The login page uses useSession and redirects only when session is valid.
 
-  // Protected portal routes (except change-password)
+  // Protected portal routes (legacy /portal/change-password redirects without extra guard)
   if (pathname.startsWith("/portal") && !pathname.startsWith("/portal/change-password")) {
     if (!hasSession(request)) {
       return NextResponse.redirect(new URL("/", request.url));

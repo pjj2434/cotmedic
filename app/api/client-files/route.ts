@@ -4,25 +4,37 @@ import { clientFile } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { utapi } from "@/lib/uploadthing-server";
+import { portalUserCanAccessClientFiles } from "@/lib/portal-access";
 
-/** GET - List files. Owner can list any client's files; client can list only their own. */
+/** GET - List files. Owner passes clientId; location accounts use their effective location. */
 export async function GET(request: Request) {
-  const authResult = await withAuthApi({ roles: ["owner", "client"] });
+  const authResult = await withAuthApi({
+    roles: ["owner", "client", "employee", "administrator"],
+  });
   if (authResult instanceof NextResponse) return authResult;
   const { user: authUser, role } = authResult;
 
   const { searchParams } = new URL(request.url);
   const clientIdParam = searchParams.get("clientId");
-  const clientId = role === "client" ? authUser.id : (clientIdParam ?? null);
+  let clientId: string | null = null;
+  if (role === "owner") clientId = clientIdParam;
+  else if (role === "client") clientId = authUser.id;
+  else if (role === "employee") clientId = authUser.locationId?.trim() || null;
+  else if (role === "administrator") clientId = clientIdParam;
 
   if (!clientId) {
     return NextResponse.json(
-      { error: role === "owner" ? "clientId required" : "Unauthorized" },
+      {
+        error:
+          role === "owner" || role === "administrator"
+            ? "clientId required"
+            : "Unauthorized",
+      },
       { status: 400 }
     );
   }
 
-  if (role === "client" && clientId !== authUser.id) {
+  if (!portalUserCanAccessClientFiles(role, authUser, clientId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

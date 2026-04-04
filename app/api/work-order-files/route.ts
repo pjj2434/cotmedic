@@ -1,29 +1,41 @@
 import { withAuthApi } from "@/lib/with-auth";
 import { db } from "@/db";
 import { workOrder, workOrderFile } from "@/db/schema";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { utapi } from "@/lib/uploadthing-server";
+import {
+  appendWorkOrderCustomerScopeConditions,
+  canViewWorkOrderForPortalUser,
+  workOrderCustomerScope,
+  type SessionUserLike,
+} from "@/lib/portal-access";
 
-async function getAccessibleWorkOrderIds(role: string, userId: string) {
+async function getAccessibleWorkOrderIds(role: string, user: SessionUserLike) {
   if (role === "owner") return null;
   if (role === "technician") {
     const rows = await db
       .select({ id: workOrder.id })
       .from(workOrder)
-      .where(eq(workOrder.technicianId, userId));
+      .where(eq(workOrder.technicianId, user.id));
     return rows.map((r) => r.id);
   }
+  const scope = workOrderCustomerScope(role, user);
+  const conditions: SQL[] = [];
+  const r = appendWorkOrderCustomerScopeConditions(scope, conditions);
+  if (r === "empty") return [];
   const rows = await db
     .select({ id: workOrder.id })
     .from(workOrder)
-    .where(eq(workOrder.customerId, userId));
-  return rows.map((r) => r.id);
+    .where(conditions.length ? and(...conditions) : undefined);
+  return rows.map((x) => x.id);
 }
 
 /** GET - List work-order files by workOrderId, or all visible to current user. */
 export async function GET(request: Request) {
-  const authResult = await withAuthApi({ roles: ["owner", "technician", "client"] });
+  const authResult = await withAuthApi({
+    roles: ["owner", "technician", "client", "employee", "administrator"],
+  });
   if (authResult instanceof NextResponse) return authResult;
   const { user: authUser, role } = authResult;
 
@@ -37,11 +49,7 @@ export async function GET(request: Request) {
       .where(eq(workOrder.id, workOrderId))
       .limit(1);
     if (!order) return NextResponse.json({ error: "Work order not found" }, { status: 404 });
-    if (
-      role !== "owner" &&
-      !(role === "technician" && order.technicianId === authUser.id) &&
-      !(role === "client" && order.customerId === authUser.id)
-    ) {
+    if (!canViewWorkOrderForPortalUser(role, authUser, order)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -53,7 +61,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ files });
   }
 
-  const accessibleIds = await getAccessibleWorkOrderIds(role, authUser.id);
+  const accessibleIds = await getAccessibleWorkOrderIds(role, authUser);
   if (accessibleIds && accessibleIds.length === 0) return NextResponse.json({ files: [] });
 
   const files = await db
