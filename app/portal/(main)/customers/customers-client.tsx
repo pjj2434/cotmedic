@@ -446,7 +446,7 @@ export function CustomersClient() {
                     className="shrink-0"
                   >
                     <Pencil className="size-4" />
-                    Edit type
+                    Edit
                   </Button>
                   <Button
                     variant="outline"
