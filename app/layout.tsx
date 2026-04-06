@@ -27,6 +27,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Cot/Liftmedik | Customer Portal",
   description: "Customer portal login for Cot/Liftmedik.",
+  manifest: "/site.webmanifest",
 };
 
 export default function RootLayout({
