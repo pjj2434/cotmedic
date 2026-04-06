@@ -81,20 +81,20 @@ export async function GET(request: Request) {
   return NextResponse.json({ workOrders: ordersWithMeta });
 }
 
-/** POST - Create work order. Technician only. */
+/** POST - Create work order. Technician can create own; owner can create on behalf of a technician. */
 export async function POST(request: Request) {
-  const authResult = await withAuthApi({ roles: ["technician"] });
+  const authResult = await withAuthApi({ roles: ["owner", "technician"] });
   if (authResult instanceof NextResponse) return authResult;
-  const { user: authUser } = authResult;
+  const { user: authUser, role } = authResult;
 
-  let body: { type: WorkOrderType; customerId: string; formData: unknown };
+  let body: { type: WorkOrderType; customerId: string; formData: unknown; technicianId?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { type, customerId, formData } = body;
+  const { type, customerId, formData, technicianId } = body;
   if (!type || !customerId || formData == null) {
     return NextResponse.json(
       { error: "type, customerId, and formData are required" },
@@ -105,12 +105,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "type must be cot or lift" }, { status: 400 });
   }
 
+  let assignedTechnicianId = authUser.id;
+  if (role === "owner") {
+    const requested = String(technicianId ?? "").trim();
+    if (!requested) {
+      return NextResponse.json({ error: "technicianId is required for owner submissions" }, { status: 400 });
+    }
+    const tech = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(and(eq(user.id, requested), eq(user.role, "technician")))
+      .limit(1);
+    if (!tech[0]) {
+      return NextResponse.json({ error: "Invalid technicianId" }, { status: 400 });
+    }
+    assignedTechnicianId = requested;
+  }
+
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
   await db.insert(workOrder).values({
     id,
-    technicianId: authUser.id,
+    technicianId: assignedTechnicianId,
     customerId,
     type,
     formData: JSON.stringify(formData),

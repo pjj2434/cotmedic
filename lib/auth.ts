@@ -51,8 +51,8 @@ const ownerAc = ac.newRole({
   session: ["list", "revoke", "delete"],
 });
 const technicianAc = ac.newRole({
-  user: ["list", "get"],
-  session: ["list"],
+  user: [],
+  session: [],
 });
 const clientAc = ac.newRole({ user: [], session: [] });
 const employeeAc = ac.newRole({ user: [], session: [] });

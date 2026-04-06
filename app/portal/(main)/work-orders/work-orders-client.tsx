@@ -50,6 +50,7 @@ import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
 const CLIENT_CONTACT_EMAIL = "marcelo@cotmedik.com";
 
 type Customer = { id: string; name: string; customerType?: string };
+type Technician = { id: string; name: string };
 type WorkOrder = {
   id: string;
   technicianId: string;
@@ -474,22 +475,6 @@ function ReportFormatToggle({
 
 const CLIENT_WORK_ORDERS_PAGE_SIZE = 10;
 
-function customerMatchesWorkType(
-  customerType: string | undefined,
-  workType: "cot" | "lift"
-): boolean {
-  const normalized = (customerType ?? "cot").trim().toLowerCase();
-  if (!normalized) return workType === "cot";
-  if (normalized === "both") return true;
-
-  const types = normalized
-    .split(/[,\s|/]+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  return types.includes(workType);
-}
-
 export function WorkOrdersClient({
   role,
   userName,
@@ -515,6 +500,9 @@ export function WorkOrdersClient({
   const [workType, setWorkType] = useState<"cot" | "lift" | "">("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [technicians, setTechnicians] = useState<Technician[]>([]);
+  const [techniciansLoading, setTechniciansLoading] = useState(false);
+  const [selectedTechnician, setSelectedTechnician] = useState<Technician | null>(null);
   const [customersLoading, setCustomersLoading] = useState(false);
   const reportPrintRef = useRef<HTMLDivElement>(null);
   const [printDialogOpen, setPrintDialogOpen] = useState(false);
@@ -564,24 +552,36 @@ export function WorkOrdersClient({
   const fetchCustomers = useCallback(async (type: "cot" | "lift") => {
     setCustomersLoading(true);
     try {
-      const { data: res } = await authClient.admin.listUsers({
-        query: {
-          filterField: "role",
-          filterValue: "client",
-          filterOperator: "eq",
-          limit: 500,
-        },
-      });
-      const users = (res as { users?: (Customer & { role?: string })[] })?.users ?? [];
-      setCustomers(
-        users.filter((u) => customerMatchesWorkType(u.customerType, type))
-      );
+      const res = await fetch(`/api/customers?type=${type}`);
+      if (!res.ok) throw new Error("Failed to fetch customers");
+      const data = (await res.json()) as { customers?: Customer[] };
+      setCustomers(data.customers ?? []);
     } catch {
       setCustomers([]);
     } finally {
       setCustomersLoading(false);
     }
   }, []);
+
+  const fetchTechnicians = useCallback(async () => {
+    if (role !== "owner") return;
+    setTechniciansLoading(true);
+    try {
+      const res = await fetch("/api/technicians");
+      if (!res.ok) throw new Error("Failed to fetch technicians");
+      const data = (await res.json()) as { technicians?: { id: string; name: string }[] };
+      const users = data.technicians ?? [];
+      setTechnicians(
+        users
+          .map((u) => ({ id: u.id, name: String(u.name ?? "").trim() || "Unnamed technician" }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
+    } catch {
+      setTechnicians([]);
+    } finally {
+      setTechniciansLoading(false);
+    }
+  }, [role]);
 
   useEffect(() => {
     fetchWorkOrders();
@@ -592,6 +592,10 @@ export function WorkOrdersClient({
     else setCustomers([]);
     setSelectedCustomer(null);
   }, [workType, fetchCustomers]);
+
+  useEffect(() => {
+    fetchTechnicians();
+  }, [fetchTechnicians]);
 
   useEffect(() => {
     if (!isLocationPortalRole(role)) return;
@@ -648,11 +652,12 @@ export function WorkOrdersClient({
     };
   });
 
+  const activeTechnician = role === "owner" ? selectedTechnician : { id: userId, name: userName };
   const formUrl =
-    workType && selectedCustomer
+    workType && selectedCustomer && activeTechnician
       ? workType === "cot"
-        ? `/repair-form?techName=${encodeURIComponent(userName)}&techId=${userId}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
-        : `/lift-repair-form?techName=${encodeURIComponent(userName)}&techId=${userId}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
+        ? `/repair-form?techName=${encodeURIComponent(activeTechnician.name)}&techId=${activeTechnician.id}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
+        : `/lift-repair-form?techName=${encodeURIComponent(activeTechnician.name)}&techId=${activeTechnician.id}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
       : null;
 
   const ownerCustomerOptions = useMemo(() => {
@@ -724,13 +729,46 @@ export function WorkOrdersClient({
         </div>
       )}
 
-      {role === "technician" && (
+      {(role === "technician" || role === "owner") && (
         <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="font-medium text-zinc-900">New repair report</h2>
           <p className="mt-1 text-sm text-zinc-500">
-            Select the type and customer to start a repair form.
+            Select {role === "owner" ? "technician, type, and customer" : "type and customer"} to start a repair form.
           </p>
           <div className="mt-4 space-y-3">
+            {role === "owner" && (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <Label className="w-16 shrink-0">Tech</Label>
+                <Combobox
+                  items={technicians}
+                  value={selectedTechnician}
+                  onValueChange={(v) => setSelectedTechnician(v as Technician | null)}
+                  itemToStringLabel={(t) => (t as Technician).name}
+                  isItemEqualToValue={(a, b) => (a as Technician)?.id === (b as Technician)?.id}
+                >
+                  <ComboboxInput
+                    className="h-11 w-full text-base sm:h-9 sm:w-[260px] sm:text-sm"
+                    placeholder={techniciansLoading ? "Loading technicians…" : "Search technician…"}
+                    disabled={techniciansLoading}
+                    showClear={!!selectedTechnician}
+                  />
+                  <ComboboxContent>
+                    <ComboboxEmpty>No technician found.</ComboboxEmpty>
+                    <ComboboxList>
+                      {(item) => (
+                        <ComboboxItem
+                          className="min-h-11 px-3 text-base sm:min-h-8 sm:px-1.5 sm:text-sm"
+                          key={(item as Technician).id}
+                          value={item as Technician}
+                        >
+                          {(item as Technician).name}
+                        </ComboboxItem>
+                      )}
+                    </ComboboxList>
+                  </ComboboxContent>
+                </Combobox>
+              </div>
+            )}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <Label className="w-14 shrink-0">Type</Label>
             <Select

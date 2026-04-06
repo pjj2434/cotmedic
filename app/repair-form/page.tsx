@@ -225,10 +225,12 @@ export default function CotMedikRepairFormPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const techName = searchParams.get("techName");
+  const techId = searchParams.get("techId");
   const customerId = searchParams.get("customerId");
   const customerName = searchParams.get("customerName");
   const returnTo = searchParams.get("returnTo");
   const router = useRouter();
+  const lockTechnicianName = Boolean(techId);
 
   useEffect(() => {
     if (techName) setForm((f) => ({ ...f, techName }));
@@ -281,7 +283,11 @@ export default function CotMedikRepairFormPage() {
       date: normalizeDate(form.date),
       time: normalizeTime(form.time),
     };
-    setForm(normalizedForm);
+    if (!normalizedForm.techName.trim()) {
+      setSubmitError("Technician name is required.");
+      setSubmitting(false);
+      return;
+    }
     if (customerId) {
       try {
         const res = await fetch("/api/work-orders", {
@@ -290,6 +296,7 @@ export default function CotMedikRepairFormPage() {
           body: JSON.stringify({
             type: "cot",
             customerId,
+            technicianId: techId ?? undefined,
             formData: normalizedForm,
           }),
         });
@@ -376,6 +383,7 @@ export default function CotMedikRepairFormPage() {
                     placeholder="Full name"
                     value={form.techName}
                     onChange={(e) => set("techName", e.target.value)}
+                    readOnly={lockTechnicianName}
                   />
                 </div>
               </div>
