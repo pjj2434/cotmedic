@@ -41,6 +41,7 @@ type User = {
   role?: string;
   banned?: boolean;
   customerType?: string;
+  address?: string | null;
   locationId?: string | null;
   managedLocationIds?: string | null;
 };
@@ -68,13 +69,36 @@ function accountTypeLabel(role: string | undefined): string {
 function emptyCreateForm() {
   return {
     name: "",
+    address: "",
     userId: "",
     password: "",
+    createLoginNow: false,
     customerType: "cot" as "cot" | "lift" | "both",
     accountKind: "location" as AccountKind,
     employeeLocationId: "",
     adminLocationIds: [] as string[],
   };
+}
+
+function slugifyForUserId(input: string): string {
+  const slug = input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 20);
+  return slug || "location";
+}
+
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 8);
+}
+
+function generateDeferredCredentials(name: string): { userId: string; password: string } {
+  const base = slugifyForUserId(name);
+  const userId = `${base}_${randomSuffix()}`;
+  const password = `${randomSuffix()}${randomSuffix()}A1!`;
+  return { userId, password };
 }
 
 export function CustomersClient() {
@@ -98,6 +122,7 @@ export function CustomersClient() {
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editKind, setEditKind] = useState<AccountKind>("location");
   const [editCustomerType, setEditCustomerType] = useState<"cot" | "lift" | "both">("cot");
+  const [editAddress, setEditAddress] = useState("");
   const [editEmployeeLocationId, setEditEmployeeLocationId] = useState("");
   const [editAdminLocationIds, setEditAdminLocationIds] = useState<string[]>([]);
   const [editLoading, setEditLoading] = useState(false);
@@ -178,13 +203,30 @@ export function CustomersClient() {
       setCreateError("Select at least one location for this administrator.");
       return;
     }
+    const shouldCreateLoginNow =
+      createForm.accountKind !== "location" || createForm.createLoginNow;
+    if (shouldCreateLoginNow) {
+      if (!createForm.userId.trim()) {
+        setCreateError("User ID is required.");
+        return;
+      }
+      if (!createForm.password || createForm.password.length < 8) {
+        setCreateError("Password must be at least 8 characters.");
+        return;
+      }
+    }
     setCreateLoading(true);
     try {
-      const username = createForm.userId.trim().toLowerCase();
+      const generated = !shouldCreateLoginNow
+        ? generateDeferredCredentials(createForm.name)
+        : null;
+      const username = (generated?.userId ?? createForm.userId).trim().toLowerCase();
+      const password = generated?.password ?? createForm.password;
       const role = accountKindToRole(createForm.accountKind);
       const data: Record<string, unknown> = { username };
       if (createForm.accountKind === "location") {
         data.customerType = createForm.customerType;
+        data.address = createForm.address.trim() || null;
       }
       if (createForm.accountKind === "employee") {
         data.locationId = createForm.employeeLocationId;
@@ -194,7 +236,7 @@ export function CustomersClient() {
       }
       const { data: created, error } = await authClient.admin.createUser({
         email: `${username}@cotmedic.local`,
-        password: createForm.password,
+        password,
         name: createForm.name.trim(),
         // @ts-expect-error custom roles
         role,
@@ -260,6 +302,7 @@ export function CustomersClient() {
     setEditCustomerType(
       ct === "lift" ? "lift" : ct === "both" ? "both" : "cot"
     );
+    setEditAddress(u.address?.trim() || "");
     setEditEmployeeLocationId(u.locationId?.trim() || "");
     setEditAdminLocationIds(parseManagedLocationIds(u.managedLocationIds));
     setEditOpen(true);
@@ -283,16 +326,19 @@ export function CustomersClient() {
       const data: Record<string, unknown> = { role };
       if (editKind === "location") {
         data.customerType = editCustomerType;
+        data.address = editAddress.trim() || null;
         data.locationId = null;
         data.managedLocationIds = null;
       } else if (editKind === "employee") {
         data.locationId = editEmployeeLocationId;
         data.managedLocationIds = null;
         data.customerType = null;
+        data.address = null;
       } else {
         data.managedLocationIds = JSON.stringify(editAdminLocationIds);
         data.locationId = null;
         data.customerType = null;
+        data.address = null;
       }
       const { error } = await authClient.admin.updateUser({
         userId: editUser.id,
@@ -437,6 +483,9 @@ export function CustomersClient() {
                     )}
                   </div>
                   <p className="text-sm text-zinc-500">User ID: {getUserId(u)}</p>
+                  {u.role === "client" && u.address?.trim() && (
+                    <p className="text-sm text-zinc-500">Address: {u.address}</p>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                   <Button
@@ -515,6 +564,8 @@ export function CustomersClient() {
                   setCreateForm((p) => ({
                     ...p,
                     accountKind: v as AccountKind,
+                    createLoginNow:
+                      (v as AccountKind) === "location" ? p.createLoginNow : true,
                   }))
                 }
               >
@@ -540,6 +591,17 @@ export function CustomersClient() {
             </div>
             {createForm.accountKind === "location" && (
               <div className="space-y-2">
+                <Label>Address</Label>
+                <Input
+                  value={createForm.address}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, address: e.target.value }))}
+                  placeholder="Street, city, state, ZIP"
+                  autoComplete="nope"
+                />
+              </div>
+            )}
+            {createForm.accountKind === "location" && (
+              <div className="space-y-2">
                 <Label>Customer type</Label>
                 <Select
                   value={createForm.customerType}
@@ -559,6 +621,25 @@ export function CustomersClient() {
                     <SelectItem value="both">Both</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+            {createForm.accountKind === "location" && (
+              <div className="space-y-2">
+                <Label className="flex cursor-pointer items-center gap-2">
+                  <Checkbox
+                    checked={createForm.createLoginNow}
+                    onCheckedChange={(checked) =>
+                      setCreateForm((p) => ({ ...p, createLoginNow: checked === true }))
+                    }
+                  />
+                  <span>Create login now (optional)</span>
+                </Label>
+                {!createForm.createLoginNow && (
+                  <p className="text-xs text-zinc-500">
+                    You can create this location now and set login credentials later by using
+                    Reset password on this account.
+                  </p>
+                )}
               </div>
             )}
             {createForm.accountKind === "employee" && (
@@ -607,29 +688,33 @@ export function CustomersClient() {
                 </div>
               </div>
             )}
-            <div className="space-y-2">
-              <Label>User ID</Label>
-              <Input
-                type="text"
-                value={createForm.userId}
-                onChange={(e) => setCreateForm((p) => ({ ...p, userId: e.target.value }))}
-                placeholder="e.g. acme_corp"
-                required
-                autoComplete="nope"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Password</Label>
-              <Input
-                type="password"
-                value={createForm.password}
-                onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
-                placeholder="••••••••"
-                required
-                minLength={8}
-                autoComplete="nope"
-              />
-            </div>
+            {(createForm.accountKind !== "location" || createForm.createLoginNow) && (
+              <>
+                <div className="space-y-2">
+                  <Label>User ID</Label>
+                  <Input
+                    type="text"
+                    value={createForm.userId}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, userId: e.target.value }))}
+                    placeholder="e.g. acme_corp"
+                    required
+                    autoComplete="nope"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Password</Label>
+                  <Input
+                    type="password"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                    placeholder="••••••••"
+                    required
+                    minLength={8}
+                    autoComplete="nope"
+                  />
+                </div>
+              </>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
                 Cancel
@@ -668,22 +753,33 @@ export function CustomersClient() {
               </Select>
             </div>
             {editKind === "location" && (
-              <div className="space-y-2">
-                <Label>Customer type</Label>
-                <Select
-                  value={editCustomerType}
-                  onValueChange={(v) => setEditCustomerType(v as "cot" | "lift" | "both")}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cot">Cot Medik</SelectItem>
-                    <SelectItem value="lift">Lift Medik</SelectItem>
-                    <SelectItem value="both">Both</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <>
+                <div className="space-y-2">
+                  <Label>Address</Label>
+                  <Input
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    placeholder="Street, city, state, ZIP"
+                    autoComplete="nope"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Customer type</Label>
+                  <Select
+                    value={editCustomerType}
+                    onValueChange={(v) => setEditCustomerType(v as "cot" | "lift" | "both")}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cot">Cot Medik</SelectItem>
+                      <SelectItem value="lift">Lift Medik</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
             {editKind === "employee" && (
               <div className="space-y-2">

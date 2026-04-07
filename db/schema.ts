@@ -24,6 +24,8 @@ export const user = sqliteTable("user", {
   banExpires: text("banExpires"),
   // Customer type for role=client (location): "cot" | "lift" | "both"
   customerType: text("customerType"),
+  /** role=client: location street/mailing address */
+  address: text("address"),
   /** role=employee: user id of the location (client) this login belongs to */
   locationId: text("locationId"),
   /** role=administrator: JSON string array of location (client) user ids */

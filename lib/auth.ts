@@ -81,6 +81,11 @@ export const auth = betterAuth({
         required: false,
         input: true,
       },
+      address: {
+        type: "string",
+        required: false,
+        input: true,
+      },
       locationId: {
         type: "string",
         required: false,
