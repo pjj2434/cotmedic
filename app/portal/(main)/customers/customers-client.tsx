@@ -96,9 +96,16 @@ function randomSuffix(): string {
 
 function generateDeferredCredentials(name: string): { userId: string; password: string } {
   const base = slugifyForUserId(name);
-  const userId = `${base}_${randomSuffix()}`;
+  const userId = `pending_${base}_${randomSuffix()}`;
   const password = `${randomSuffix()}${randomSuffix()}A1!`;
   return { userId, password };
+}
+
+function isPendingLocationLogin(u: User): boolean {
+  const userId = u.username?.trim()
+    ? u.username
+    : u.email.replace(/@cotmedic\.local$/i, "");
+  return roleToAccountKind(u.role) === "location" && userId.startsWith("pending_");
 }
 
 export function CustomersClient() {
@@ -108,6 +115,7 @@ export function CustomersClient() {
   const [createOpen, setCreateOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetUser, setResetUser] = useState<User | null>(null);
+  const [resetUserId, setResetUserId] = useState("");
   const [resetPassword, setResetPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
@@ -260,6 +268,7 @@ export function CustomersClient() {
 
   function openReset(u: User) {
     setResetUser(u);
+    setResetUserId(isPendingLocationLogin(u) ? "" : getUserId(u));
     setResetPassword("");
     setResetError("");
     setResetOpen(true);
@@ -268,6 +277,10 @@ export function CustomersClient() {
   async function handleReset(e: React.FormEvent) {
     e.preventDefault();
     if (!resetUser) return;
+    if (!resetUserId.trim()) {
+      setResetError("User ID is required.");
+      return;
+    }
     if (!resetPassword || resetPassword.length < 8) {
       setResetError("Password must be at least 8 characters");
       return;
@@ -275,6 +288,20 @@ export function CustomersClient() {
     setResetError("");
     setResetLoading(true);
     try {
+      const normalizedUserId = resetUserId.trim().toLowerCase();
+      const { error: updateError } = await authClient.admin.updateUser({
+        userId: resetUser.id,
+        data: {
+          username: normalizedUserId,
+          displayUsername: resetUserId.trim(),
+          email: `${normalizedUserId}@cotmedic.local`,
+          resetPassword: false,
+        },
+      });
+      if (updateError) {
+        setResetError((updateError as { message?: string })?.message ?? "Failed to set login");
+        return;
+      }
       const { error } = await authClient.admin.setUserPassword({
         userId: resetUser.id,
         newPassword: resetPassword,
@@ -286,6 +313,8 @@ export function CustomersClient() {
       await authClient.admin.revokeUserSessions({ userId: resetUser.id });
       setResetOpen(false);
       setResetUser(null);
+      setResetUserId("");
+      fetchUsers();
     } catch {
       setResetError("Failed to reset password");
     } finally {
@@ -483,6 +512,9 @@ export function CustomersClient() {
                     )}
                   </div>
                   <p className="text-sm text-zinc-500">User ID: {getUserId(u)}</p>
+                  {isPendingLocationLogin(u) && (
+                    <p className="text-sm text-amber-700">Login not set yet</p>
+                  )}
                   {u.role === "client" && u.address?.trim() && (
                     <p className="text-sm text-zinc-500">Address: {u.address}</p>
                   )}
@@ -636,7 +668,7 @@ export function CustomersClient() {
                 </Label>
                 {!createForm.createLoginNow && (
                   <p className="text-xs text-zinc-500">
-                    You can create this location now and set login credentials later by using
+                    You can create this location now and set login credentials later by opening
                     Reset password on this account.
                   </p>
                 )}
@@ -847,6 +879,17 @@ export function CustomersClient() {
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{resetError}</p>
             )}
             <div className="space-y-2">
+              <Label>User ID</Label>
+              <Input
+                type="text"
+                value={resetUserId}
+                onChange={(e) => setResetUserId(e.target.value)}
+                placeholder="e.g. acme_corp"
+                required
+                autoComplete="nope"
+              />
+            </div>
+            <div className="space-y-2">
               <Label>New password</Label>
               <Input
                 type="password"
@@ -863,10 +906,10 @@ export function CustomersClient() {
               </Button>
               <Button
                 type="submit"
-                disabled={resetLoading || !resetPassword || resetPassword.length < 8}
+                disabled={resetLoading || !resetUserId.trim() || !resetPassword || resetPassword.length < 8}
                 className="bg-red-600 hover:bg-red-700"
               >
-                {resetLoading ? "Resetting…" : "Reset password"}
+                {resetLoading ? "Saving…" : "Save login"}
               </Button>
             </DialogFooter>
           </form>
