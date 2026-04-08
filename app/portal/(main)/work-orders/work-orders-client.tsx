@@ -220,6 +220,28 @@ function ReportDataTable({
   if (rows.length === 0) {
     return <p className="text-sm text-zinc-600">No rows match current filters.</p>;
   }
+  if (density === "print") {
+    return (
+      <div className="report-grid-table text-black">
+        <div className="report-grid-head">
+          <div>Date</div>
+          <div>Technician</div>
+          <div>Ambulance / Bus</div>
+          <div>Description</div>
+          <div>Parts used</div>
+        </div>
+        {rows.map((row, i) => (
+          <div key={row.id} className={cn("report-grid-row", i % 2 === 1 && "report-row-alt")}>
+            <div className="report-grid-cell">{new Date(row.date).toLocaleDateString()}</div>
+            <div className="report-grid-cell">{row.technician}</div>
+            <div className="report-grid-cell">{row.ambulance}</div>
+            <div className="report-grid-cell whitespace-pre-wrap">{row.notes}</div>
+            <div className="report-grid-cell whitespace-pre-wrap">{row.partsUsed}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   const cell =
     density === "screen" ? "text-sm px-3 py-2.5" : "text-[11px] px-2 py-2 leading-snug";
   const head =
@@ -227,11 +249,11 @@ function ReportDataTable({
   return (
     <table className="report-data-table w-full border-collapse text-left text-black">
       <colgroup>
-        <col style={{ width: "10%" }} />
-        <col style={{ width: "14%" }} />
         <col style={{ width: "12%" }} />
-        <col style={{ width: "28%" }} />
-        <col style={{ width: "36%" }} />
+        <col style={{ width: "16%" }} />
+        <col style={{ width: "12%" }} />
+        <col style={{ width: "26%" }} />
+        <col style={{ width: "34%" }} />
       </colgroup>
       <thead>
         <tr>
@@ -282,15 +304,12 @@ function ReportDataTable({
           </th>
         </tr>
       </thead>
-      <tbody>
-        {rows.map((row, i) => (
-          <tr
-            key={row.id}
-            className={cn(i % 2 === 1 && "report-row-alt bg-zinc-100/80")}
-          >
+      {rows.map((row, i) => (
+        <tbody key={row.id} className="report-row-group break-inside-avoid">
+          <tr className={cn(i % 2 === 1 && "report-row-alt bg-zinc-100/80")}>
             <td
               className={cn(
-                "border border-zinc-800 text-zinc-900 whitespace-nowrap",
+                "border border-zinc-800 text-zinc-900",
                 cell
               )}
             >
@@ -319,8 +338,8 @@ function ReportDataTable({
               {row.partsUsed}
             </td>
           </tr>
-        ))}
-      </tbody>
+        </tbody>
+      ))}
     </table>
   );
 }
@@ -474,6 +493,7 @@ function ReportFormatToggle({
 }
 
 const CLIENT_WORK_ORDERS_PAGE_SIZE = 10;
+const OWNER_WORK_ORDERS_PAGE_SIZE = 10;
 
 export function WorkOrdersClient({
   role,
@@ -510,6 +530,7 @@ export function WorkOrdersClient({
   const [dialogPrintFormat, setDialogPrintFormat] = useState<"list" | "table">("table");
   const [printRunId, setPrintRunId] = useState(0);
   const [clientListLimit, setClientListLimit] = useState(CLIENT_WORK_ORDERS_PAGE_SIZE);
+  const [ownerListLimit, setOwnerListLimit] = useState(OWNER_WORK_ORDERS_PAGE_SIZE);
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
   const [assistanceDialogOpen, setAssistanceDialogOpen] = useState(false);
   const [copiedContactEmail, setCopiedContactEmail] = useState(false);
@@ -609,6 +630,20 @@ export function WorkOrdersClient({
     filterAmbulance,
   ]);
 
+  useEffect(() => {
+    if (role !== "owner" && role !== "administrator") return;
+    setOwnerListLimit(OWNER_WORK_ORDERS_PAGE_SIZE);
+  }, [
+    role,
+    workOrders,
+    filterType,
+    filterStartDate,
+    filterEndDate,
+    filterCustomer,
+    filterSerial,
+    filterAmbulance,
+  ]);
+
   const filteredOrders = workOrders.filter((o) => {
     const parsed = extractSearchFields(o);
     if (filterStartDate && (!parsed.dateIso || parsed.dateIso < filterStartDate)) return false;
@@ -628,10 +663,15 @@ export function WorkOrdersClient({
     return true;
   });
 
-  const clientVisibleOrders = clientLike
+  const ownerLike = role === "owner" || role === "administrator";
+  const visibleOrders = clientLike
     ? filteredOrders.slice(0, clientListLimit)
-    : filteredOrders;
-  const clientHasMore = clientLike && filteredOrders.length > clientListLimit;
+    : ownerLike
+      ? filteredOrders.slice(0, ownerListLimit)
+      : filteredOrders;
+  const hasMore = clientLike
+    ? filteredOrders.length > clientListLimit
+    : ownerLike && filteredOrders.length > ownerListLimit;
 
   const reportRows: WorkOrderReportRow[] = filteredOrders.map((o) => {
     const parsed = extractSearchFields(o);
@@ -1005,7 +1045,7 @@ export function WorkOrdersClient({
                   : "divide-y divide-zinc-200"
               )}
             >
-              {clientVisibleOrders.map((o) => (
+              {visibleOrders.map((o) => (
                 <Link
                   key={o.id}
                   href={`/portal/work-orders/${o.id}`}
@@ -1058,20 +1098,30 @@ export function WorkOrdersClient({
                 </Link>
               ))}
             </div>
-            {clientHasMore && (
+            {hasMore && (
               <div className="border-t border-zinc-200 px-4 py-3">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="h-8 w-full text-xs"
-                  onClick={() =>
-                    setClientListLimit((n) =>
-                      Math.min(n + CLIENT_WORK_ORDERS_PAGE_SIZE, filteredOrders.length)
-                    )
-                  }
+                  onClick={() => {
+                    if (clientLike) {
+                      setClientListLimit((n) =>
+                        Math.min(n + CLIENT_WORK_ORDERS_PAGE_SIZE, filteredOrders.length)
+                      );
+                      return;
+                    }
+                    setOwnerListLimit((n) =>
+                      Math.min(n + OWNER_WORK_ORDERS_PAGE_SIZE, filteredOrders.length)
+                    );
+                  }}
                 >
-                  Show more ({filteredOrders.length - clientListLimit} remaining)
+                  Show more (
+                  {clientLike
+                    ? filteredOrders.length - clientListLimit
+                    : filteredOrders.length - ownerListLimit}{" "}
+                  remaining)
                 </Button>
               </div>
             )}
@@ -1133,8 +1183,19 @@ export function WorkOrdersClient({
             <style>{`
               .report-print-sheet-inline { display: none; }
               @media print {
+                body * { visibility: hidden !important; }
+                .report-print-sheet-inline,
+                .report-print-sheet-inline * { visibility: visible !important; }
+                .report-print-sheet-inline {
+                  display: block !important;
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  background: #fff !important;
+                  z-index: 9999 !important;
+                }
                 .report-screen { display: none !important; }
-                .report-print-sheet-inline { display: block !important; }
                 .report-print-sheet-inline .report-header {
                   width: 100% !important;
                   text-align: center !important;
@@ -1180,6 +1241,23 @@ export function WorkOrdersClient({
                   padding: 4px 5px !important;
                   vertical-align: top !important;
                   word-wrap: break-word !important;
+                  break-inside: avoid-page !important;
+                  page-break-inside: avoid !important;
+                }
+                .report-print-sheet-inline .report-data-table tr {
+                  break-inside: avoid-page !important;
+                  page-break-inside: avoid !important;
+                  page-break-after: auto !important;
+                }
+                .report-print-sheet-inline .report-data-table .report-row-group {
+                  break-inside: avoid-page !important;
+                  page-break-inside: avoid !important;
+                }
+                .report-print-sheet-inline .report-data-table thead {
+                  display: table-header-group !important;
+                }
+                .report-print-sheet-inline .report-data-table tbody {
+                  display: table-row-group !important;
                 }
                 .report-print-sheet-inline .report-data-table thead th {
                   background: #18181b !important;
@@ -1192,6 +1270,43 @@ export function WorkOrdersClient({
                   background: #f4f4f5 !important;
                   -webkit-print-color-adjust: exact !important;
                   print-color-adjust: exact !important;
+                }
+                .report-print-sheet-inline .report-grid-table {
+                  width: 100% !important;
+                  font-size: 11px !important;
+                  line-height: 1.4 !important;
+                }
+                .report-print-sheet-inline .report-grid-head,
+                .report-print-sheet-inline .report-grid-row {
+                  display: grid !important;
+                  grid-template-columns: 12% 16% 12% 26% 34% !important;
+                  width: 100% !important;
+                }
+                .report-print-sheet-inline .report-grid-head > div {
+                  border: 1px solid #000 !important;
+                  background: #18181b !important;
+                  color: #fff !important;
+                  font-weight: 700 !important;
+                  text-transform: uppercase !important;
+                  padding: 4px 5px !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+                .report-print-sheet-inline .report-grid-row {
+                  break-inside: avoid-page !important;
+                  page-break-inside: avoid !important;
+                }
+                .report-print-sheet-inline .report-grid-row.report-row-alt > div {
+                  background: #f4f4f5 !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+                .report-print-sheet-inline .report-grid-cell {
+                  border: 1px solid #000 !important;
+                  padding: 4px 5px !important;
+                  vertical-align: top !important;
+                  word-wrap: break-word !important;
+                  overflow-wrap: anywhere !important;
                 }
               }
             `}</style>
@@ -1275,6 +1390,23 @@ export function WorkOrdersClient({
                 padding: 5px 6px !important;
                 vertical-align: top !important;
                 word-wrap: break-word !important;
+                break-inside: avoid-page !important;
+                page-break-inside: avoid !important;
+              }
+              .report-data-table tr {
+                break-inside: avoid-page !important;
+                page-break-inside: avoid !important;
+                page-break-after: auto !important;
+              }
+              .report-data-table .report-row-group {
+                break-inside: avoid-page !important;
+                page-break-inside: avoid !important;
+              }
+              .report-data-table thead {
+                display: table-header-group !important;
+              }
+              .report-data-table tbody {
+                display: table-row-group !important;
               }
               .report-data-table thead th {
                 background: #18181b !important;
@@ -1285,6 +1417,43 @@ export function WorkOrdersClient({
               }
               .report-data-table .report-row-alt td {
                 background: #f4f4f5 !important;
+              }
+              .report-grid-table {
+                width: 100% !important;
+                font-size: 11px !important;
+                line-height: 1.4 !important;
+              }
+              .report-grid-head,
+              .report-grid-row {
+                display: grid !important;
+                grid-template-columns: 12% 16% 12% 26% 34% !important;
+                width: 100% !important;
+              }
+              .report-grid-head > div {
+                border: 1px solid #000 !important;
+                background: #18181b !important;
+                color: #fff !important;
+                font-weight: 700 !important;
+                text-transform: uppercase !important;
+                padding: 5px 6px !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .report-grid-row {
+                break-inside: avoid-page !important;
+                page-break-inside: avoid !important;
+              }
+              .report-grid-row.report-row-alt > div {
+                background: #f4f4f5 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .report-grid-cell {
+                border: 1px solid #000 !important;
+                padding: 5px 6px !important;
+                vertical-align: top !important;
+                word-wrap: break-word !important;
+                overflow-wrap: anywhere !important;
               }
               .report-list-card {
                 padding: 10px 12px !important;

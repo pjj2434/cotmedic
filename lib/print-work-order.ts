@@ -73,6 +73,23 @@ export function printWorkOrderContent(
       vertical-align: top !important;
       word-wrap: break-word !important;
       overflow-wrap: anywhere !important;
+      break-inside: avoid-page !important;
+      page-break-inside: avoid !important;
+    }
+    .report-print-sheet .report-data-table tr {
+      break-inside: avoid-page !important;
+      page-break-inside: avoid !important;
+      page-break-after: auto !important;
+    }
+    .report-print-sheet .report-data-table .report-row-group {
+      break-inside: avoid-page !important;
+      page-break-inside: avoid !important;
+    }
+    .report-print-sheet .report-data-table thead {
+      display: table-header-group !important;
+    }
+    .report-print-sheet .report-data-table tbody {
+      display: table-row-group !important;
     }
     .report-print-sheet .report-data-table thead th {
       background: #18181b !important;
@@ -87,6 +104,43 @@ export function printWorkOrderContent(
       background: #f4f4f5 !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
+    }
+    .report-print-sheet .report-grid-table {
+      width: 100% !important;
+      font-size: 11px !important;
+      line-height: 1.4 !important;
+    }
+    .report-print-sheet .report-grid-head,
+    .report-print-sheet .report-grid-row {
+      display: grid !important;
+      grid-template-columns: 12% 16% 12% 26% 34% !important;
+      width: 100% !important;
+    }
+    .report-print-sheet .report-grid-head > div {
+      border: 1px solid #000 !important;
+      background: #18181b !important;
+      color: #fff !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      padding: 5px 6px !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .report-print-sheet .report-grid-row {
+      break-inside: avoid-page !important;
+      page-break-inside: avoid !important;
+    }
+    .report-print-sheet .report-grid-row.report-row-alt > div {
+      background: #f4f4f5 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .report-print-sheet .report-grid-cell {
+      border: 1px solid #000 !important;
+      padding: 5px 6px !important;
+      vertical-align: top !important;
+      word-wrap: break-word !important;
+      overflow-wrap: anywhere !important;
     }
     .report-print-sheet .report-data-table .cell-center { text-align: center !important; }
     .report-print-sheet .report-data-table .cell-work { font-size: 11px !important; }

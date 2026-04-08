@@ -31,6 +31,18 @@ const quickLinkClass =
   "group flex items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-colors hover:border-red-200 hover:bg-red-50/40 sm:p-5";
 
 export function OwnerDashboard({ name, analytics }: { name: string; analytics: Analytics }) {
+  const nyDate = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  });
+  const nyTime = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
   return (
     <div className="space-y-8">
       <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
@@ -117,7 +129,7 @@ export function OwnerDashboard({ name, analytics }: { name: string; analytics: A
                   <div className="min-w-0">
                     <p className="font-medium text-zinc-900">
                       {o.type === "cot" ? "Cot Medik" : "Lift Medik"} ·{" "}
-                      {new Date(o.createdAt).toLocaleDateString()}
+                      {nyDate.format(new Date(o.createdAt))}
                     </p>
                     {!o.hasFiles && (
                       <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-800">
@@ -128,10 +140,7 @@ export function OwnerDashboard({ name, analytics }: { name: string; analytics: A
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-sm text-zinc-500">
-                      {new Date(o.createdAt).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
+                      {nyTime.format(new Date(o.createdAt))}
                     </span>
                     <ChevronRight className="size-4 text-zinc-300" />
                   </div>
