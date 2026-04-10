@@ -49,6 +49,17 @@ import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
 
 const CLIENT_CONTACT_EMAIL = "marcelo@cotmedik.com";
 
+const WORK_ORDERS_LIST_FILTERS_STORAGE_PREFIX = "cotmedic-portal-work-orders-list-filters:";
+
+type PersistedWorkOrderListFilters = {
+  filterType: string;
+  filterStartDate: string;
+  filterEndDate: string;
+  filterSerial: string;
+  filterAmbulance: string;
+  filterCustomer: { id: string; name: string } | null;
+};
+
 type Customer = { id: string; name: string; customerType?: string };
 type Technician = { id: string; name: string };
 type WorkOrder = {
@@ -492,8 +503,8 @@ function ReportFormatToggle({
   );
 }
 
-const CLIENT_WORK_ORDERS_PAGE_SIZE = 10;
-const OWNER_WORK_ORDERS_PAGE_SIZE = 10;
+const CLIENT_WORK_ORDERS_PAGE_SIZE = 20;
+const OWNER_WORK_ORDERS_PAGE_SIZE = 20;
 
 export function WorkOrdersClient({
   role,
@@ -506,6 +517,8 @@ export function WorkOrdersClient({
 }) {
   const clientLike = isLocationPortalRole(role);
   const showOwnerStyleFilters = role === "owner" || role === "administrator";
+  const shouldPersistListFilters = role !== "technician";
+  const listFiltersStorageKey = `${WORK_ORDERS_LIST_FILTERS_STORAGE_PREFIX}${userId}`;
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -534,6 +547,64 @@ export function WorkOrdersClient({
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
   const [assistanceDialogOpen, setAssistanceDialogOpen] = useState(false);
   const [copiedContactEmail, setCopiedContactEmail] = useState(false);
+  const [listFiltersHydrated, setListFiltersHydrated] = useState(!shouldPersistListFilters);
+
+  useEffect(() => {
+    if (!shouldPersistListFilters) return;
+    try {
+      const raw = sessionStorage.getItem(listFiltersStorageKey);
+      if (!raw) {
+        setListFiltersHydrated(true);
+        return;
+      }
+      const p = JSON.parse(raw) as Partial<PersistedWorkOrderListFilters>;
+      if (typeof p.filterType === "string") setFilterType(p.filterType);
+      if (typeof p.filterStartDate === "string") setFilterStartDate(p.filterStartDate);
+      if (typeof p.filterEndDate === "string") setFilterEndDate(p.filterEndDate);
+      if (typeof p.filterSerial === "string") setFilterSerial(p.filterSerial);
+      if (typeof p.filterAmbulance === "string") setFilterAmbulance(p.filterAmbulance);
+      if (p.filterCustomer === null) setFilterCustomer(null);
+      else if (
+        p.filterCustomer &&
+        typeof p.filterCustomer.id === "string" &&
+        typeof p.filterCustomer.name === "string"
+      ) {
+        setFilterCustomer({ id: p.filterCustomer.id, name: p.filterCustomer.name });
+      }
+    } catch {
+      /* ignore corrupt storage */
+    }
+    setListFiltersHydrated(true);
+  }, [shouldPersistListFilters, listFiltersStorageKey]);
+
+  useEffect(() => {
+    if (!shouldPersistListFilters || !listFiltersHydrated) return;
+    const payload: PersistedWorkOrderListFilters = {
+      filterType,
+      filterStartDate,
+      filterEndDate,
+      filterSerial,
+      filterAmbulance,
+      filterCustomer: filterCustomer
+        ? { id: filterCustomer.id, name: filterCustomer.name }
+        : null,
+    };
+    try {
+      sessionStorage.setItem(listFiltersStorageKey, JSON.stringify(payload));
+    } catch {
+      /* quota / private mode */
+    }
+  }, [
+    shouldPersistListFilters,
+    listFiltersHydrated,
+    listFiltersStorageKey,
+    filterType,
+    filterStartDate,
+    filterEndDate,
+    filterSerial,
+    filterAmbulance,
+    filterCustomer,
+  ]);
 
   const copyClientContactEmail = useCallback(async () => {
     try {
