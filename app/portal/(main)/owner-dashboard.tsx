@@ -1,34 +1,29 @@
 import Link from "next/link";
-import {
-  AlertTriangle,
-  Building2,
-  ChevronRight,
-  ClipboardList,
-  FileStack,
-  Users,
-} from "lucide-react";
+import { AlertTriangle, ChevronRight, FileStack } from "lucide-react";
 import type { Analytics } from "@/lib/analytics";
 
 function StatCard({
+  href,
   value,
   label,
   sub,
 }: {
+  href: string;
   value: number | string;
   label: string;
   sub?: string;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+    <Link
+      href={href}
+      className="group block rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-colors hover:border-red-200 hover:bg-red-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:p-5"
+    >
       <p className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">{value}</p>
       <p className="mt-1 text-sm font-medium text-zinc-600">{label}</p>
       {sub && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{sub}</p>}
-    </div>
+    </Link>
   );
 }
-
-const quickLinkClass =
-  "group flex items-center gap-4 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-colors hover:border-red-200 hover:bg-red-50/40 sm:p-5";
 
 export function OwnerDashboard({ name, analytics }: { name: string; analytics: Analytics }) {
   const nyDate = new Intl.DateTimeFormat("en-US", {
@@ -57,51 +52,15 @@ export function OwnerDashboard({ name, analytics }: { name: string; analytics: A
 
       <div>
         <h2 className="mb-3 text-sm font-semibold tracking-tight text-zinc-900">Overview</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
           <StatCard
+            href="/portal/work-orders"
             value={analytics.totalWorkOrders}
             label="Work orders"
             sub={`${analytics.workOrdersThisMonth} this month · Cot ${analytics.cotCount} · Lift ${analytics.liftCount}`}
           />
-          <StatCard value={analytics.totalCustomers} label="Locations" />
-          <StatCard value={analytics.totalTechnicians} label="Technicians" />
-          <StatCard value={analytics.totalFiles} label="WO attachments" />
-        </div>
-      </div>
-
-      <div>
-        <h2 className="mb-3 text-sm font-semibold tracking-tight text-zinc-900">Quick links</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Link href="/portal/employees" className={quickLinkClass}>
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700">
-              <Users className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-zinc-900">Technicians</p>
-              <p className="text-sm text-zinc-500">Accounts & access</p>
-            </div>
-            <ChevronRight className="size-5 shrink-0 text-zinc-300 transition-colors group-hover:text-red-600" />
-          </Link>
-          <Link href="/portal/customers" className={quickLinkClass}>
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700">
-              <Building2 className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-zinc-900">Locations & logins</p>
-              <p className="text-sm text-zinc-500">Customers & portal users</p>
-            </div>
-            <ChevronRight className="size-5 shrink-0 text-zinc-300 transition-colors group-hover:text-red-600" />
-          </Link>
-          <Link href="/portal/work-orders" className={quickLinkClass}>
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700">
-              <ClipboardList className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-zinc-900">Work orders</p>
-              <p className="text-sm text-zinc-500">Browse & print reports</p>
-            </div>
-            <ChevronRight className="size-5 shrink-0 text-zinc-300 transition-colors group-hover:text-red-600" />
-          </Link>
+          <StatCard href="/portal/customers" value={analytics.totalCustomers} label="Locations" />
+          <StatCard href="/portal/employees" value={analytics.totalTechnicians} label="Technicians" />
         </div>
       </div>
 
