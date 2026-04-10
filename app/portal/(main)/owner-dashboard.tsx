@@ -16,7 +16,7 @@ function StatCard({
   return (
     <Link
       href={href}
-      className="group block rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-colors hover:border-red-200 hover:bg-red-50/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:p-5"
+      className="block rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition-colors hover:border-red-200 hover:bg-red-50/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 sm:p-5"
     >
       <p className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">{value}</p>
       <p className="mt-1 text-sm font-medium text-zinc-600">{label}</p>
