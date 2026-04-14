@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Printer, ArrowLeft, FileText, Image, Trash2 } from "lucide-react";
+import { Printer, ArrowLeft, FileText, Image, Trash2, Pencil } from "lucide-react";
 import Link from "next/link";
 import { WorkOrderFormView } from "@/components/work-order-form-view";
 import { printWorkOrderContent } from "@/lib/print-work-order";
@@ -100,6 +100,7 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
 
   const canUpload = role === "owner" || role === "technician";
   const canDelete = role === "owner";
+  const canEdit = role === "owner" || role === "technician";
   const isImage = (mime: string) => mime.startsWith("image/");
   const isPdf = (mime: string) => mime === "application/pdf";
 
@@ -143,6 +144,18 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
           <Printer className="mr-2 size-4" />
           Print
         </Button>
+        {canEdit && (
+          <Button variant="outline" size="sm" asChild>
+            <Link
+              href={`/${
+                workOrder.type === "lift" ? "lift-repair-form" : "repair-form"
+              }?workOrderId=${encodeURIComponent(workOrder.id)}&techName=${encodeURIComponent(workOrder.technicianName)}&techId=${encodeURIComponent(workOrder.technicianId)}&customerId=${encodeURIComponent(workOrder.customerId)}&customerName=${encodeURIComponent(workOrder.customerName)}&returnTo=${encodeURIComponent(`/portal/work-orders/${workOrder.id}`)}`}
+            >
+              <Pencil className="mr-2 size-4" />
+              Edit
+            </Link>
+          </Button>
+        )}
       </div>
       <div
         ref={printContentRef}

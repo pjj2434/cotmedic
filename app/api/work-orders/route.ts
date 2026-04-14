@@ -5,6 +5,7 @@ import { eq, and, desc, inArray, type SQL } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import {
   appendWorkOrderCustomerScopeConditions,
+  canEditWorkOrderForPortalUser,
   workOrderCustomerScope,
 } from "@/lib/portal-access";
 
@@ -136,4 +137,45 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ id, success: true });
+}
+
+/** PATCH - Update work order form data. Owner can edit any; technician can edit their own. */
+export async function PATCH(request: Request) {
+  const authResult = await withAuthApi({ roles: ["owner", "technician"] });
+  if (authResult instanceof NextResponse) return authResult;
+  const { user: authUser, role } = authResult;
+
+  let body: { id: string; formData: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const id = String(body.id ?? "").trim();
+  if (!id || body.formData == null) {
+    return NextResponse.json({ error: "id and formData are required" }, { status: 400 });
+  }
+
+  const existing = await db
+    .select({ id: workOrder.id, technicianId: workOrder.technicianId })
+    .from(workOrder)
+    .where(eq(workOrder.id, id))
+    .limit(1);
+  const order = existing[0];
+  if (!order) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  if (!canEditWorkOrderForPortalUser(role, authUser, { technicianId: order.technicianId })) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  await db
+    .update(workOrder)
+    .set({
+      formData: JSON.stringify(body.formData),
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(workOrder.id, id));
+
+  return NextResponse.json({ success: true });
 }

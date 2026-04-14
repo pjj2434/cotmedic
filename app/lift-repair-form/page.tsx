@@ -35,6 +35,25 @@ function normalizeDate(value: string): string {
   return `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}/${year}`;
 }
 
+function toDateInputValue(value: string): string {
+  const raw = value.trim();
+  if (!raw) return "";
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return raw;
+  const usMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!usMatch) return "";
+  const month = Number(usMatch[1]);
+  const day = Number(usMatch[2]);
+  const year = Number(usMatch[3]);
+  const date = new Date(year, month - 1, day);
+  const valid =
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day;
+  if (!valid) return "";
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function normalizeTime(value: string): string {
   const raw = value.trim();
   if (!raw) return "";
@@ -173,13 +192,61 @@ export default function LiftMedikRepairFormPage() {
   const customerId = searchParams.get("customerId");
   const customerName = searchParams.get("customerName");
   const returnTo = searchParams.get("returnTo");
+  const workOrderId = searchParams.get("workOrderId");
   const router = useRouter();
   const lockTechnicianName = Boolean(techId);
+  const isEditMode = Boolean(workOrderId);
+  const [loadingExisting, setLoadingExisting] = useState(isEditMode);
 
   useEffect(() => {
     if (techName) setForm((f) => ({ ...f, techName }));
     if (customerName) setForm((f) => ({ ...f, companyName: customerName }));
   }, [techName, customerName]);
+
+  useEffect(() => {
+    if (!workOrderId) return;
+    let cancelled = false;
+    setLoadingExisting(true);
+    setSubmitError(null);
+    fetch(`/api/work-orders?id=${encodeURIComponent(workOrderId)}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error ?? "Failed to load work order");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const parsed =
+          typeof data?.formData === "string"
+            ? (JSON.parse(data.formData) as Partial<FormState>)
+            : (data?.formData as Partial<FormState> | undefined);
+        if (!parsed || typeof parsed !== "object") return;
+        setForm((prev) => ({
+          ...prev,
+          ...parsed,
+          date: typeof parsed.date === "string" ? toDateInputValue(parsed.date) : prev.date,
+          partsUsed:
+            Array.isArray(parsed.partsUsed) && parsed.partsUsed.length > 0
+              ? parsed.partsUsed
+              : prev.partsUsed,
+          partsNeeded:
+            Array.isArray(parsed.partsNeeded) && parsed.partsNeeded.length > 0
+              ? parsed.partsNeeded
+              : prev.partsNeeded,
+        }));
+      })
+      .catch((e) => {
+        if (!cancelled) setSubmitError(e instanceof Error ? e.message : "Failed to load work order");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workOrderId]);
 
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: val }));
@@ -225,7 +292,30 @@ export default function LiftMedikRepairFormPage() {
       setSubmitting(false);
       return;
     }
-    if (customerId) {
+    if (isEditMode && workOrderId) {
+      try {
+        const res = await fetch("/api/work-orders", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: workOrderId,
+            formData: normalizedForm,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error ?? "Failed to save");
+        }
+        if (returnTo) {
+          router.push(returnTo);
+          return;
+        }
+      } catch (e) {
+        setSubmitError(e instanceof Error ? e.message : "Failed to save");
+        setSubmitting(false);
+        return;
+      }
+    } else if (customerId) {
       try {
         const res = await fetch("/api/work-orders", {
           method: "POST",
@@ -281,6 +371,13 @@ export default function LiftMedikRepairFormPage() {
           </div>
 
           <div className="px-9 py-7 max-sm:px-[18px] max-sm:py-5">
+            <button
+              type="button"
+              onClick={() => router.push(returnTo || "/portal/work-orders")}
+              className="mb-5 rounded-[3px] border border-[#d0d0d0] bg-[#f4f4f4] px-3 py-2 text-xs font-semibold uppercase tracking-[1px] text-[#111] hover:bg-[#eaeaea]"
+            >
+              Back
+            </button>
             <div className="mb-7">
               <div className="mb-2.5 font-mono text-[10px] uppercase tracking-[3px] text-[#111]">
                 Identification
@@ -415,9 +512,17 @@ export default function LiftMedikRepairFormPage() {
               type="button"
               className="mt-1 w-full rounded-[3px] border-0 bg-[#111] px-3 py-3.5 text-base uppercase tracking-[2px] text-white disabled:cursor-not-allowed disabled:opacity-70"
               onClick={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || loadingExisting}
             >
-              {submitted ? "✔ Report Submitted" : submitting ? "Saving…" : "Submit Report"}
+              {submitted
+                ? isEditMode
+                  ? "✔ Report Updated"
+                  : "✔ Report Submitted"
+                : submitting || loadingExisting
+                  ? "Saving…"
+                  : isEditMode
+                    ? "Update Report"
+                    : "Submit Report"}
             </button>
           </div>
 

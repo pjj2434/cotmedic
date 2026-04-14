@@ -68,6 +68,16 @@ export function canViewWorkOrderForPortalUser(
   return scope.ids.includes(order.customerId);
 }
 
+export function canEditWorkOrderForPortalUser(
+  role: string,
+  user: SessionUserLike,
+  order: { technicianId: string }
+): boolean {
+  if (role === "owner") return true;
+  if (role === "technician") return order.technicianId === user.id;
+  return false;
+}
+
 /** Owner always; client/employee fixed location; administrator only if location is in their list. */
 export function portalUserCanAccessClientFiles(
   role: string,
