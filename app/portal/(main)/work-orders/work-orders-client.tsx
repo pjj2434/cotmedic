@@ -51,8 +51,12 @@ const CLIENT_CONTACT_EMAIL = "marcelo@cotmedik.com";
 
 const WORK_ORDERS_LIST_FILTERS_STORAGE_PREFIX = "cotmedic-portal-work-orders-list-filters:";
 
+const FILE_FILTER_VALUES = ["all", "has", "none"] as const;
+type FileFilterValue = (typeof FILE_FILTER_VALUES)[number];
+
 type PersistedWorkOrderListFilters = {
   filterType: string;
+  filterFiles: string;
   filterStartDate: string;
   filterEndDate: string;
   filterSerial: string;
@@ -523,6 +527,7 @@ export function WorkOrdersClient({
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("all");
+  const [filterFiles, setFilterFiles] = useState<FileFilterValue>("all");
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterSerial, setFilterSerial] = useState("");
@@ -559,6 +564,9 @@ export function WorkOrdersClient({
       }
       const p = JSON.parse(raw) as Partial<PersistedWorkOrderListFilters>;
       if (typeof p.filterType === "string") setFilterType(p.filterType);
+      if (typeof p.filterFiles === "string" && FILE_FILTER_VALUES.includes(p.filterFiles as FileFilterValue)) {
+        setFilterFiles(p.filterFiles as FileFilterValue);
+      }
       if (typeof p.filterStartDate === "string") setFilterStartDate(p.filterStartDate);
       if (typeof p.filterEndDate === "string") setFilterEndDate(p.filterEndDate);
       if (typeof p.filterSerial === "string") setFilterSerial(p.filterSerial);
@@ -581,6 +589,7 @@ export function WorkOrdersClient({
     if (!shouldPersistListFilters || !listFiltersHydrated) return;
     const payload: PersistedWorkOrderListFilters = {
       filterType,
+      filterFiles,
       filterStartDate,
       filterEndDate,
       filterSerial,
@@ -599,6 +608,7 @@ export function WorkOrdersClient({
     listFiltersHydrated,
     listFiltersStorageKey,
     filterType,
+    filterFiles,
     filterStartDate,
     filterEndDate,
     filterSerial,
@@ -697,6 +707,7 @@ export function WorkOrdersClient({
     workOrders,
     filterStartDate,
     filterEndDate,
+    filterFiles,
     filterSerial,
     filterAmbulance,
   ]);
@@ -708,6 +719,7 @@ export function WorkOrdersClient({
     role,
     workOrders,
     filterType,
+    filterFiles,
     filterStartDate,
     filterEndDate,
     filterCustomer,
@@ -730,6 +742,8 @@ export function WorkOrdersClient({
       const q = filterAmbulance.trim().toLowerCase();
       if (!parsed.ambulance.toLowerCase().includes(q)) return false;
     }
+    if (filterFiles === "has" && !o.hasFiles) return false;
+    if (filterFiles === "none" && o.hasFiles) return false;
 
     return true;
   });
@@ -993,6 +1007,24 @@ export function WorkOrdersClient({
               )}
               <div className="flex min-w-0 flex-col justify-end gap-1">
                 <Label className="min-h-4.5 text-xs font-medium leading-none text-zinc-600">
+                  Attached file
+                </Label>
+                <Select value={filterFiles} onValueChange={(v) => setFilterFiles(v as FileFilterValue)}>
+                  <SelectTrigger
+                    size="sm"
+                    className="h-7 min-h-7 w-full rounded-md border-zinc-200 text-xs"
+                  >
+                    <SelectValue placeholder="All" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="has">Has file</SelectItem>
+                    <SelectItem value="none">No file</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex min-w-0 flex-col justify-end gap-1">
+                <Label className="min-h-4.5 text-xs font-medium leading-none text-zinc-600">
                   Start date
                 </Label>
                 <ReportDateField
@@ -1071,6 +1103,7 @@ export function WorkOrdersClient({
                   className="h-7 min-h-7 w-full text-xs"
                   onClick={() => {
                     setFilterType("all");
+                    setFilterFiles("all");
                     setFilterStartDate("");
                     setFilterEndDate("");
                     setFilterCustomer(null);
