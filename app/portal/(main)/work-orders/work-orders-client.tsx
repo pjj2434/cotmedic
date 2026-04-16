@@ -805,6 +805,15 @@ export function WorkOrdersClient({
     }
   }, [filterType]);
 
+  /** After a successful row upload, set `hasFiles` locally so filters (e.g. “no file”) apply without refetching. */
+  const markWorkOrderHasFiles = useCallback((workOrderId: string) => {
+    setWorkOrders((prev) =>
+      prev.map((order) =>
+        order.id === workOrderId ? { ...order, hasFiles: true } : order
+      )
+    );
+  }, []);
+
   const fetchCustomers = useCallback(async (type: "cot" | "lift") => {
     setCustomersLoading(true);
     try {
@@ -1317,7 +1326,7 @@ export function WorkOrdersClient({
                   clientLike={clientLike}
                   showOwnerStyleFilters={showOwnerStyleFilters}
                   fileDropEnabled={canAttachFilesOnList}
-                  onFilesUploaded={fetchWorkOrders}
+                  onFilesUploaded={() => markWorkOrderHasFiles(o.id)}
                 />
               ))}
             </div>
