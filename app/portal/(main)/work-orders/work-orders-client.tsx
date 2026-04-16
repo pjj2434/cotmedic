@@ -680,6 +680,8 @@ export function WorkOrdersClient({
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  /** After the first successful list fetch for this mount, avoid full-page loading on refetches (e.g. type filter). */
+  const workOrdersFetchCompletedOnce = useRef(false);
   const [filterType, setFilterType] = useState<string>("all");
   const [filterFiles, setFilterFiles] = useState<FileFilterValue>("all");
   const [filterStartDate, setFilterStartDate] = useState("");
@@ -791,7 +793,9 @@ export function WorkOrdersClient({
   }, [printRunId]);
 
   const fetchWorkOrders = useCallback(async () => {
-    setLoading(true);
+    if (!workOrdersFetchCompletedOnce.current) {
+      setLoading(true);
+    }
     try {
       const params = new URLSearchParams();
       if (filterType !== "all") params.set("type", filterType);
@@ -802,6 +806,7 @@ export function WorkOrdersClient({
       setWorkOrders([]);
     } finally {
       setLoading(false);
+      workOrdersFetchCompletedOnce.current = true;
     }
   }, [filterType]);
 
