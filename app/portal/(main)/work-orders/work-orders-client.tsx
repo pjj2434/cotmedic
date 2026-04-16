@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type DragEvent } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,8 @@ import {
 } from "@/components/ui/dialog";
 import { ReportDateField } from "@/components/report-date-field";
 import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
+import { uploadFiles } from "@/lib/uploadthing";
+import { toast } from "sonner";
 
 const CLIENT_CONTACT_EMAIL = "marcelo@cotmedik.com";
 
@@ -507,6 +509,156 @@ function ReportFormatToggle({
   );
 }
 
+function WorkOrderListRowWithOptionalFileDrop({
+  order: o,
+  clientLike,
+  showOwnerStyleFilters,
+  fileDropEnabled,
+  onFilesUploaded,
+}: {
+  order: WorkOrder;
+  clientLike: boolean;
+  showOwnerStyleFilters: boolean;
+  fileDropEnabled: boolean;
+  onFilesUploaded: () => void;
+}) {
+  const [fileDragOver, setFileDragOver] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  const handleDragEnter = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      if (!fileDropEnabled) return;
+      if (![...e.dataTransfer.types].includes("Files")) return;
+      e.preventDefault();
+      setFileDragOver(true);
+    },
+    [fileDropEnabled]
+  );
+
+  const handleDragLeave = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      if (!fileDropEnabled) return;
+      const related = e.relatedTarget as Node | null;
+      if (related && e.currentTarget.contains(related)) return;
+      setFileDragOver(false);
+    },
+    [fileDropEnabled]
+  );
+
+  const handleDragOver = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      if (!fileDropEnabled) return;
+      if (![...e.dataTransfer.types].includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    },
+    [fileDropEnabled]
+  );
+
+  const handleDrop = useCallback(
+    async (e: DragEvent<HTMLDivElement>) => {
+      if (!fileDropEnabled) return;
+      setFileDragOver(false);
+      const files = [...e.dataTransfer.files];
+      if (files.length === 0) return;
+      e.preventDefault();
+      setUploadingFiles(true);
+      try {
+        await uploadFiles("workOrderFileUploader", {
+          files,
+          input: { workOrderId: o.id },
+        });
+        toast.success(files.length === 1 ? "File attached" : "Files attached");
+        onFilesUploaded();
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Upload failed";
+        toast.error(message);
+      } finally {
+        setUploadingFiles(false);
+      }
+    },
+    [fileDropEnabled, o.id, onFilesUploaded]
+  );
+
+  const linkClass = cn(
+    "flex items-center justify-between gap-3 transition-colors",
+    clientLike
+      ? "group rounded-xl border border-zinc-100 bg-white px-3 py-3.5 shadow-sm hover:border-red-100 hover:bg-red-50/35 hover:shadow-md sm:px-4"
+      : "border-l-2 border-transparent px-4 py-3 hover:border-zinc-300 hover:bg-zinc-50"
+  );
+
+  const linkInner = (
+    <Link href={`/portal/work-orders/${o.id}`} className={linkClass}>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {clientLike && (
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100/90 text-red-700 shadow-inner shadow-red-200/20">
+            <FileText className="size-5" strokeWidth={2} />
+          </div>
+        )}
+        <div className="min-w-0">
+          <p
+            className={cn(
+              clientLike
+                ? "text-base font-semibold tracking-tight text-zinc-900"
+                : "text-sm font-medium text-zinc-900 sm:text-base"
+            )}
+          >
+            {o.customerName} · {o.type === "cot" ? "Cot Medik" : "Lift Medik"}
+          </p>
+          <p
+            className={cn(
+              clientLike ? "mt-0.5 text-sm text-zinc-600" : "text-xs text-zinc-500 sm:text-sm"
+            )}
+          >
+            {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
+          </p>
+          {showOwnerStyleFilters && !o.hasFiles && (
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">
+              <AlertTriangle className="size-3.5" />
+              No file attached
+            </p>
+          )}
+        </div>
+      </div>
+      <ChevronRight
+        className={cn(
+          "size-4 shrink-0 text-zinc-400",
+          clientLike && "transition-transform group-hover:translate-x-0.5 group-hover:text-red-500"
+        )}
+      />
+    </Link>
+  );
+
+  if (!fileDropEnabled) {
+    return linkInner;
+  }
+
+  return (
+    <div
+      className={cn(
+        "relative",
+        fileDragOver && (clientLike ? "rounded-xl ring-2 ring-red-500/70" : "rounded-sm ring-2 ring-red-500/70")
+      )}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {linkInner}
+      {uploadingFiles && (
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-white/75 text-sm font-medium text-zinc-800 backdrop-blur-[1px]",
+            clientLike ? "rounded-xl" : "rounded-sm"
+          )}
+        >
+          Uploading…
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CLIENT_WORK_ORDERS_PAGE_SIZE = 20;
 const OWNER_WORK_ORDERS_PAGE_SIZE = 20;
 
@@ -521,6 +673,8 @@ export function WorkOrdersClient({
 }) {
   const clientLike = isLocationPortalRole(role);
   const showOwnerStyleFilters = role === "owner" || role === "administrator";
+  const canAttachFilesOnList =
+    (role === "owner" || role === "technician") && !clientLike;
   const shouldPersistListFilters = role !== "technician";
   const listFiltersStorageKey = `${WORK_ORDERS_LIST_FILTERS_STORAGE_PREFIX}${userId}`;
 
@@ -974,15 +1128,22 @@ export function WorkOrdersClient({
             clientLike ? "border-zinc-100 bg-zinc-50/60 sm:px-5" : "border-zinc-200"
           )}
         >
-          <h2
-            className={
-              clientLike
-                ? "text-base font-semibold tracking-tight text-zinc-900 sm:text-lg"
-                : "font-medium text-zinc-900"
-            }
-          >
-            {role === "owner" ? "All work orders" : "Your work orders"}
-          </h2>
+          <div className="min-w-0 shrink-0 sm:max-w-[min(100%,28rem)]">
+            <h2
+              className={
+                clientLike
+                  ? "text-base font-semibold tracking-tight text-zinc-900 sm:text-lg"
+                  : "font-medium text-zinc-900"
+              }
+            >
+              {role === "owner" ? "All work orders" : "Your work orders"}
+            </h2>
+            {canAttachFilesOnList && (
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                Drag a PDF or image onto a row to attach it without opening the work order.
+              </p>
+            )}
+          </div>
           {role !== "technician" && (
             <div className="grid w-full grid-cols-1 items-stretch gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
               {showOwnerStyleFilters && (
@@ -1150,56 +1311,14 @@ export function WorkOrdersClient({
               )}
             >
               {visibleOrders.map((o) => (
-                <Link
+                <WorkOrderListRowWithOptionalFileDrop
                   key={o.id}
-                  href={`/portal/work-orders/${o.id}`}
-                  className={cn(
-                    "flex items-center justify-between gap-3 transition-colors",
-                    clientLike
-                      ? "group rounded-xl border border-zinc-100 bg-white px-3 py-3.5 shadow-sm hover:border-red-100 hover:bg-red-50/35 hover:shadow-md sm:px-4"
-                      : "border-l-2 border-transparent px-4 py-3 hover:border-zinc-300 hover:bg-zinc-50"
-                  )}
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    {clientLike && (
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100/90 text-red-700 shadow-inner shadow-red-200/20">
-                        <FileText className="size-5" strokeWidth={2} />
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p
-                        className={cn(
-                          clientLike
-                            ? "text-base font-semibold tracking-tight text-zinc-900"
-                            : "text-sm font-medium text-zinc-900 sm:text-base"
-                        )}
-                      >
-                        {o.customerName} · {o.type === "cot" ? "Cot Medik" : "Lift Medik"}
-                      </p>
-                      <p
-                        className={cn(
-                          clientLike
-                            ? "mt-0.5 text-sm text-zinc-600"
-                            : "text-xs text-zinc-500 sm:text-sm"
-                        )}
-                      >
-                        {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
-                      </p>
-                      {showOwnerStyleFilters && !o.hasFiles && (
-                        <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">
-                          <AlertTriangle className="size-3.5" />
-                          No file attached
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronRight
-                    className={cn(
-                      "size-4 shrink-0 text-zinc-400",
-                      clientLike && "transition-transform group-hover:translate-x-0.5 group-hover:text-red-500"
-                    )}
-                  />
-                </Link>
+                  order={o}
+                  clientLike={clientLike}
+                  showOwnerStyleFilters={showOwnerStyleFilters}
+                  fileDropEnabled={canAttachFilesOnList}
+                  onFilesUploaded={fetchWorkOrders}
+                />
               ))}
             </div>
             {hasMore && (

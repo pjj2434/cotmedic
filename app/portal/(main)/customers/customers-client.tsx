@@ -133,6 +133,7 @@ export function CustomersClient() {
   const [editAddress, setEditAddress] = useState("");
   const [editEmployeeLocationId, setEditEmployeeLocationId] = useState("");
   const [editAdminLocationIds, setEditAdminLocationIds] = useState<string[]>([]);
+  const [editName, setEditName] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
 
@@ -325,6 +326,7 @@ export function CustomersClient() {
   function openEdit(u: User) {
     setEditUser(u);
     setEditError("");
+    setEditName(u.name?.trim() ?? "");
     const kind = roleToAccountKind(u.role);
     setEditKind(kind);
     const ct = (u.customerType ?? "cot").trim().toLowerCase();
@@ -349,11 +351,16 @@ export function CustomersClient() {
       setEditError("Select at least one location.");
       return;
     }
+    if (editKind === "location" && !editName.trim()) {
+      setEditError("Customer name is required.");
+      return;
+    }
     setEditLoading(true);
     try {
       const role = accountKindToRole(editKind);
       const data: Record<string, unknown> = { role };
       if (editKind === "location") {
+        data.name = editName.trim();
         data.customerType = editCustomerType;
         data.address = editAddress.trim() || null;
         data.locationId = null;
@@ -786,6 +793,15 @@ export function CustomersClient() {
             </div>
             {editKind === "location" && (
               <>
+                <div className="space-y-2">
+                  <Label>Customer / location name</Label>
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Site or organization name"
+                    autoComplete="organization"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label>Address</Label>
                   <Input
