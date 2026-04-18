@@ -1,13 +1,33 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import { Printer, ArrowLeft, FileText, Image, Trash2, Pencil } from "lucide-react";
 import Link from "next/link";
 import { WorkOrderFormView } from "@/components/work-order-form-view";
@@ -38,7 +58,10 @@ type WorkOrderFile = {
   createdAt: string;
 };
 
+type Customer = { id: string; name: string; customerType?: string };
+
 export function WorkOrderViewClient({ id, role }: { id: string; role: string }) {
+  const router = useRouter();
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [files, setFiles] = useState<WorkOrderFile[]>([]);
@@ -46,19 +69,53 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
   const [error, setError] = useState<string | null>(null);
   const [previewEnlargedOpen, setPreviewEnlargedOpen] = useState(false);
   const printContentRef = useRef<HTMLDivElement>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [deleteWorkOrderOpen, setDeleteWorkOrderOpen] = useState(false);
+  const [deletingWorkOrder, setDeletingWorkOrder] = useState(false);
 
   const canExpandPreview = role === "owner" || isLocationPortalRole(role);
 
+  const reloadWorkOrder = useCallback(async () => {
+    const res = await fetch(`/api/work-orders?id=${encodeURIComponent(id)}`);
+    if (!res.ok) throw new Error(res.status === 404 ? "Not found" : "Failed to load");
+    return res.json() as Promise<WorkOrder>;
+  }, [id]);
+
   useEffect(() => {
-    fetch(`/api/work-orders?id=${encodeURIComponent(id)}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(res.status === 404 ? "Not found" : "Failed to load");
-        return res.json();
-      })
+    reloadWorkOrder()
       .then((data) => setWorkOrder(data))
       .catch((e) => setError(e instanceof Error ? e.message : "Error"))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [reloadWorkOrder]);
+
+  useEffect(() => {
+    if (!workOrder) return;
+    setSelectedCustomer({ id: workOrder.customerId, name: workOrder.customerName });
+  }, [workOrder?.id, workOrder?.customerId, workOrder?.customerName]);
+
+  useEffect(() => {
+    if (!workOrder || (role !== "owner" && role !== "technician")) return;
+    if (workOrder.type !== "cot" && workOrder.type !== "lift") return;
+    let cancelled = false;
+    setCustomersLoading(true);
+    fetch(`/api/customers?type=${encodeURIComponent(workOrder.type)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setCustomers(Array.isArray(data.customers) ? data.customers : []);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomers([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCustomersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workOrder?.id, workOrder?.type, role]);
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -78,6 +135,45 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
   const handlePrint = () => {
     if (printContentRef.current && workOrder) printWorkOrderContent(printContentRef.current);
   };
+
+  async function handleSaveCustomer() {
+    if (!workOrder || !selectedCustomer || !customerDirty) return;
+    setSavingCustomer(true);
+    try {
+      const res = await fetch("/api/work-orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: workOrder.id, customerId: selectedCustomer.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to update customer");
+      const fresh = await reloadWorkOrder();
+      setWorkOrder(fresh);
+      toast.success("Customer updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update customer");
+    } finally {
+      setSavingCustomer(false);
+    }
+  }
+
+  async function handleDeleteWorkOrder() {
+    setDeletingWorkOrder(true);
+    try {
+      const res = await fetch(`/api/work-orders?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete");
+      toast.success("Work order deleted");
+      router.push("/portal/work-orders");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete work order");
+    } finally {
+      setDeletingWorkOrder(false);
+      setDeleteWorkOrderOpen(false);
+    }
+  }
 
   async function handleDeleteFile(fileId: string) {
     try {
@@ -101,6 +197,10 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
   const canUpload = role === "owner" || role === "technician";
   const canDelete = role === "owner";
   const canEdit = role === "owner" || role === "technician";
+  const canEditCustomer = role === "owner" || role === "technician";
+  const canDeleteWorkOrder = role === "owner";
+  const customerDirty =
+    !!selectedCustomer && !!workOrder && selectedCustomer.id !== workOrder.customerId;
   const isImage = (mime: string) => mime.startsWith("image/");
   const isPdf = (mime: string) => mime === "application/pdf";
 
@@ -127,35 +227,46 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
 
   return (
     <div className="min-h-screen bg-zinc-100">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-white px-3 py-2">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 py-2">
         <Button variant="outline" size="sm" asChild>
           <Link href="/portal/work-orders">
             <ArrowLeft className="mr-2 size-4" />
             Back
           </Link>
         </Button>
-        <Button
-          size="sm"
-          className={cn(
-            disablePrintOnMobilePwa ? "hidden" : "hidden sm:inline-flex"
-          )}
-          onClick={handlePrint}
-        >
-          <Printer className="mr-2 size-4" />
-          Print
-        </Button>
-        {canEdit && (
-          <Button variant="outline" size="sm" asChild>
-            <Link
-              href={`/${
-                workOrder.type === "lift" ? "lift-repair-form" : "repair-form"
-              }?workOrderId=${encodeURIComponent(workOrder.id)}&techName=${encodeURIComponent(workOrder.technicianName)}&techId=${encodeURIComponent(workOrder.technicianId)}&customerId=${encodeURIComponent(workOrder.customerId)}&customerName=${encodeURIComponent(workOrder.customerName)}&returnTo=${encodeURIComponent(`/portal/work-orders/${workOrder.id}`)}`}
-            >
-              <Pencil className="mr-2 size-4" />
-              Edit
-            </Link>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            size="sm"
+            className={cn(disablePrintOnMobilePwa ? "hidden" : "hidden sm:inline-flex")}
+            onClick={handlePrint}
+          >
+            <Printer className="mr-2 size-4" />
+            Print
           </Button>
-        )}
+          {canEdit && (
+            <Button variant="outline" size="sm" asChild>
+              <Link
+                href={`/${
+                  workOrder.type === "lift" ? "lift-repair-form" : "repair-form"
+                }?workOrderId=${encodeURIComponent(workOrder.id)}&techName=${encodeURIComponent(workOrder.technicianName)}&techId=${encodeURIComponent(workOrder.technicianId)}&customerId=${encodeURIComponent(workOrder.customerId)}&customerName=${encodeURIComponent(workOrder.customerName)}&returnTo=${encodeURIComponent(`/portal/work-orders/${workOrder.id}`)}`}
+              >
+                <Pencil className="mr-2 size-4" />
+                Edit
+              </Link>
+            </Button>
+          )}
+          {canDeleteWorkOrder && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={() => setDeleteWorkOrderOpen(true)}
+            >
+              <Trash2 className="mr-2 size-4" />
+              Delete
+            </Button>
+          )}
+        </div>
       </div>
       <div
         ref={printContentRef}
@@ -183,6 +294,57 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
         )}
         <WorkOrderFormView type={workOrder.type} formData={workOrder.formData} compact />
       </div>
+
+      {canEditCustomer && (workOrder.type === "cot" || workOrder.type === "lift") && (
+        <div className="mx-2 mb-4 rounded-md border border-zinc-200 bg-white p-3 shadow-sm sm:mx-3">
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-900">Customer</h2>
+          <p className="mt-1 text-xs text-zinc-500">Change the location this work order is tied to.</p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-3">
+            <div className="min-w-0 flex-1 space-y-2">
+              <Label htmlFor="work-order-customer" className="text-xs text-zinc-600">
+                Location
+              </Label>
+              <Combobox
+                items={customers}
+                value={selectedCustomer}
+                onValueChange={(v) => setSelectedCustomer(v as Customer | null)}
+                itemToStringLabel={(c) => (c as Customer).name}
+                isItemEqualToValue={(a, b) => (a as Customer)?.id === (b as Customer)?.id}
+              >
+                <ComboboxInput
+                  id="work-order-customer"
+                  className="h-11 w-full text-base sm:h-9 sm:text-sm"
+                  placeholder={customersLoading ? "Loading…" : "Search…"}
+                  disabled={customersLoading}
+                  showClear={!!selectedCustomer}
+                />
+                <ComboboxContent>
+                  <ComboboxEmpty>No customer found.</ComboboxEmpty>
+                  <ComboboxList>
+                    {(item) => (
+                      <ComboboxItem
+                        className="min-h-11 px-3 text-base sm:min-h-8 sm:px-1.5 sm:text-sm"
+                        key={(item as Customer).id}
+                        value={item as Customer}
+                      >
+                        {(item as Customer).name}
+                      </ComboboxItem>
+                    )}
+                  </ComboboxList>
+                </ComboboxContent>
+              </Combobox>
+            </div>
+            <Button
+              type="button"
+              className="w-full shrink-0 bg-red-600 hover:bg-red-700 sm:w-auto"
+              disabled={!customerDirty || savingCustomer || !selectedCustomer}
+              onClick={() => void handleSaveCustomer()}
+            >
+              {savingCustomer ? "Saving…" : "Save customer"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {canExpandPreview && (
         <Dialog open={previewEnlargedOpen} onOpenChange={setPreviewEnlargedOpen}>
@@ -220,7 +382,9 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
                 fetchFiles();
                 toast.success("Files uploaded");
               }}
-              onUploadError={(err) => toast.error(err.message)}
+              onUploadError={(err) => {
+                toast.error(err.message);
+              }}
               className="ut-button:bg-red-600 ut-button:ut-readying:bg-red-500 ut-button:ut-uploading:bg-red-600"
             />
           </div>
@@ -266,6 +430,30 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
           </div>
         )}
       </div>
+
+      <AlertDialog open={deleteWorkOrderOpen} onOpenChange={setDeleteWorkOrderOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this work order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the work order and its attachments. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingWorkOrder}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deletingWorkOrder}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeleteWorkOrder();
+              }}
+            >
+              {deletingWorkOrder ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
