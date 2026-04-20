@@ -543,7 +543,7 @@ export function CustomersClient() {
                     className="shrink-0"
                   >
                     <RotateCcw className="size-4" />
-                    Reset password
+                    {isPendingLocationLogin(u) ? "Set login" : "Reset password"}
                   </Button>
                   {u.banned ? (
                     <Button
@@ -676,7 +676,7 @@ export function CustomersClient() {
                 {!createForm.createLoginNow && (
                   <p className="text-xs text-zinc-500">
                     You can create this location now and set login credentials later by opening
-                    Reset password on this account.
+                    Set login on this account.
                   </p>
                 )}
               </div>
@@ -885,9 +885,13 @@ export function CustomersClient() {
       <Dialog open={resetOpen} onOpenChange={setResetOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reset password</DialogTitle>
+            <DialogTitle>
+              {resetUser && isPendingLocationLogin(resetUser) ? "Set login" : "Reset password"}
+            </DialogTitle>
             <p className="text-sm text-zinc-500">
-              Set a new password for {resetUser?.name ?? ""}.
+              {resetUser && isPendingLocationLogin(resetUser)
+                ? `Choose a User ID and password for ${resetUser.name}.`
+                : `Set a new password for ${resetUser?.name ?? ""}.`}
             </p>
           </DialogHeader>
           <form onSubmit={handleReset} className="space-y-4">
@@ -925,7 +929,13 @@ export function CustomersClient() {
                 disabled={resetLoading || !resetUserId.trim() || !resetPassword || resetPassword.length < 8}
                 className="bg-red-600 hover:bg-red-700"
               >
-                {resetLoading ? "Saving…" : "Save login"}
+                {resetLoading
+                  ? resetUser && isPendingLocationLogin(resetUser)
+                    ? "Saving…"
+                    : "Resetting…"
+                  : resetUser && isPendingLocationLogin(resetUser)
+                    ? "Save login"
+                    : "Reset password"}
               </Button>
             </DialogFooter>
           </form>
