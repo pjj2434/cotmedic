@@ -114,3 +114,13 @@ export const account = sqliteTable("account", {
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
 });
+
+/** Better Auth magic-link / verification tokens — matches existing `verification` table (0000 migration). */
+export const verification = sqliteTable("verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: text("expiresAt").notNull(),
+  createdAt: text("createdAt"),
+  updatedAt: text("updatedAt"),
+});

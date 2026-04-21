@@ -1,9 +1,12 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin, username } from "better-auth/plugins";
+import { admin, magicLink, username } from "better-auth/plugins";
 import { createAccessControl } from "better-auth/plugins/access";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import { sendPortalMagicLinkEmail } from "@/lib/send-magic-link-email";
+import { sendPasswordResetEmail } from "@/lib/send-password-reset-email";
 
 function getAuthBaseUrl() {
   const vercelUrl = process.env.VERCEL_URL?.trim();
@@ -65,6 +68,8 @@ export const auth = betterAuth({
     max: 100,
     customRules: {
       "/sign-in/username": { window: 15, max: 5 },
+      "/sign-in/magic-link": { window: 60, max: 10 },
+      "/request-password-reset": { window: 60, max: 5 },
     },
   },
   trustedOrigins: getTrustedOrigins(),
@@ -100,6 +105,17 @@ export const auth = betterAuth({
   },
   emailAndPassword: {
     enabled: true,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      await sendPasswordResetEmail({ to: user.email, url });
+    },
+    onPasswordReset: async ({ user }) => {
+      const now = new Date().toISOString();
+      await db
+        .update(schema.user)
+        .set({ resetPassword: false, updatedAt: now })
+        .where(eq(schema.user.id, user.id));
+    },
   },
   database: drizzleAdapter(db, {
     provider: "sqlite",
@@ -107,10 +123,18 @@ export const auth = betterAuth({
       user: schema.user,
       session: schema.session,
       account: schema.account,
+      verification: schema.verification,
     },
   }),
   plugins: [
     username(),
+    magicLink({
+      disableSignUp: true,
+      expiresIn: 3600, // 60 minutes (seconds)
+      sendMagicLink: async ({ email, url }) => {
+        await sendPortalMagicLinkEmail({ to: email, url });
+      },
+    }),
     admin({
       defaultRole: "client",
       adminRoles: ["owner"],
