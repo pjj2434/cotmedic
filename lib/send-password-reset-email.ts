@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { buildMedikBrandedEmailHtml } from "@/lib/medik-email-layout";
+import { ensureResendForTransactionalEmail } from "@/lib/resend-email-env";
 
 const defaultFrom = "Cot Medik <onboarding@resend.dev>";
 
@@ -8,16 +9,12 @@ const defaultFrom = "Cot Medik <onboarding@resend.dev>";
  * If RESEND_API_KEY is unset, logs the URL and returns without throwing.
  */
 export async function sendPasswordResetEmail(opts: { to: string; url: string }) {
-  const key = process.env.RESEND_API_KEY?.trim();
+  if (!ensureResendForTransactionalEmail("password-reset")) return;
+  const key = process.env.RESEND_API_KEY!.trim();
   const from = process.env.RESEND_FROM_EMAIL?.trim() || defaultFrom;
   const logoUrl1 = process.env.RESEND_BRAND_LOGO_URL?.trim();
   const logoUrl2 = process.env.RESEND_BRAND_LOGO_URL_2?.trim();
   const year = new Date().getFullYear();
-
-  if (!key) {
-    console.warn("[password-reset] RESEND_API_KEY not set; reset URL:\n", opts.url);
-    return;
-  }
 
   const resend = new Resend(key);
   const { error } = await resend.emails.send({

@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { db } from "@/db";
 import { user } from "@/db/schema";
 import { buildMedikBrandedEmailHtml } from "@/lib/medik-email-layout";
+import { ensureResendForTransactionalEmail } from "@/lib/resend-email-env";
 
 const defaultFrom = "Cot Medik <onboarding@resend.dev>";
 
@@ -32,16 +33,12 @@ async function resolvePortalUserIdForEmail(toEmail: string): Promise<string | un
  * RESEND_BRAND_LOGO_URL, RESEND_BRAND_LOGO_URL_2
  */
 export async function sendPortalMagicLinkEmail(opts: { to: string; url: string }) {
-  const key = process.env.RESEND_API_KEY?.trim();
+  if (!ensureResendForTransactionalEmail("magic-link")) return;
+  const key = process.env.RESEND_API_KEY!.trim();
   const from = process.env.RESEND_FROM_EMAIL?.trim() || defaultFrom;
   const logoUrl1 = process.env.RESEND_BRAND_LOGO_URL?.trim();
   const logoUrl2 = process.env.RESEND_BRAND_LOGO_URL_2?.trim();
   const year = new Date().getFullYear();
-
-  if (!key) {
-    console.warn("[magic-link] RESEND_API_KEY not set; magic link URL:\n", opts.url);
-    return;
-  }
 
   const portalUserId = await resolvePortalUserIdForEmail(opts.to);
 
