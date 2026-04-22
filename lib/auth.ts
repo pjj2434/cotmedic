@@ -186,7 +186,7 @@ export const auth = betterAuth({
     username(),
     magicLink({
       disableSignUp: true,
-      expiresIn: 3600, // 60 minutes (seconds)
+      expiresIn: 604800, // 7 days (seconds)
       sendMagicLink: async ({ email, url }) => {
         await sendPortalMagicLinkEmail({ to: email, url });
       },
