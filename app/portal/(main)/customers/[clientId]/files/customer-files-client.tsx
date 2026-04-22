@@ -92,7 +92,9 @@ export function CustomerFilesClient({
             fetchFiles();
             toast.success("Files uploaded");
           }}
-          onUploadError={(err) => toast.error(err.message)}
+          onUploadError={(err) => {
+            toast.error(err.message);
+          }}
           className="ut-button:bg-red-600 ut-button:ut-readying:bg-red-500 ut-button:ut-uploading:bg-red-600"
         />
       </div>

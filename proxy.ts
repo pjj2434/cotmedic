@@ -26,6 +26,9 @@ function hasSession(request: NextRequest): boolean {
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+
   // Don't redirect / to /portal here—cookie can be stale (banned/revoked).
   // The login page uses useSession and redirects only when session is valid.
 
@@ -36,9 +39,9 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {
-  matcher: ["/portal/:path*"],
+  matcher: ["/portal", "/portal/:path*"],
 };

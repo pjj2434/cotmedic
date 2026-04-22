@@ -33,6 +33,15 @@ import {
 import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, Pencil } from "lucide-react";
 import { parseManagedLocationIds } from "@/lib/portal-access";
 
+const INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function randomInvitePassword(): string {
+  const a = new Uint8Array(18);
+  crypto.getRandomValues(a);
+  const s = Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${s}Aa1!`;
+}
+
 type User = {
   id: string;
   name: string;
@@ -73,6 +82,8 @@ function emptyCreateForm() {
     userId: "",
     password: "",
     createLoginNow: false,
+    sendMagicLinkInvite: false,
+    inviteEmail: "",
     customerType: "cot" as "cot" | "lift" | "both",
     accountKind: "location" as AccountKind,
     employeeLocationId: "",
@@ -117,6 +128,8 @@ export function CustomersClient() {
   const [resetUser, setResetUser] = useState<User | null>(null);
   const [resetUserId, setResetUserId] = useState("");
   const [resetPassword, setResetPassword] = useState("");
+  const [resetSendMagicLink, setResetSendMagicLink] = useState(false);
+  const [resetInviteEmail, setResetInviteEmail] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createLoading, setCreateLoading] = useState(false);
@@ -136,6 +149,7 @@ export function CustomersClient() {
   const [editName, setEditName] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
+  const [editSignInEmail, setEditSignInEmail] = useState("");
 
   function getUserId(u: User) {
     if (u.username?.trim()) return u.username;
@@ -214,25 +228,53 @@ export function CustomersClient() {
     }
     const shouldCreateLoginNow =
       createForm.accountKind !== "location" || createForm.createLoginNow;
+
+    if (shouldCreateLoginNow && createForm.sendMagicLinkInvite) {
+      if (!createForm.inviteEmail.trim()) {
+        setCreateError("Sign-in email is required when sending a magic link.");
+        return;
+      }
+      const em = createForm.inviteEmail.trim().toLowerCase();
+      if (!INVITE_EMAIL_RE.test(em)) {
+        setCreateError("Enter a valid sign-in email for the magic link.");
+        return;
+      }
+      if (em.endsWith("@cotmedic.local")) {
+        setCreateError("Magic link email must be a real address (not @cotmedic.local).");
+        return;
+      }
+    }
+
+    const sendInvite =
+      shouldCreateLoginNow &&
+      createForm.sendMagicLinkInvite &&
+      createForm.inviteEmail.trim().length > 0;
+
     if (shouldCreateLoginNow) {
       if (!createForm.userId.trim()) {
         setCreateError("User ID is required.");
         return;
       }
-      if (!createForm.password || createForm.password.length < 8) {
+      if (!sendInvite && (!createForm.password || createForm.password.length < 8)) {
         setCreateError("Password must be at least 8 characters.");
         return;
       }
     }
+
+    const inviteEmailNorm = sendInvite ? createForm.inviteEmail.trim().toLowerCase() : null;
+
     setCreateLoading(true);
     try {
       const generated = !shouldCreateLoginNow
         ? generateDeferredCredentials(createForm.name)
         : null;
       const username = (generated?.userId ?? createForm.userId).trim().toLowerCase();
-      const password = generated?.password ?? createForm.password;
+      const password = sendInvite
+        ? randomInvitePassword()
+        : (generated?.password ?? createForm.password);
       const role = accountKindToRole(createForm.accountKind);
       const data: Record<string, unknown> = { username };
+      if (sendInvite) data.resetPassword = true;
       if (createForm.accountKind === "location") {
         data.customerType = createForm.customerType;
         data.address = createForm.address.trim() || null;
@@ -243,8 +285,10 @@ export function CustomersClient() {
       if (createForm.accountKind === "administrator") {
         data.managedLocationIds = JSON.stringify(createForm.adminLocationIds);
       }
+      const emailForUser = inviteEmailNorm ?? `${username}@cotmedic.local`;
+
       const { data: created, error } = await authClient.admin.createUser({
-        email: `${username}@cotmedic.local`,
+        email: emailForUser,
         password,
         name: createForm.name.trim(),
         // @ts-expect-error custom roles
@@ -256,6 +300,20 @@ export function CustomersClient() {
         return;
       }
       if (created) {
+        if (inviteEmailNorm) {
+          const inv = await fetch("/api/invite-magic-link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ email: inviteEmailNorm }),
+          });
+          if (!inv.ok) {
+            const j = (await inv.json().catch(() => ({}))) as { error?: string };
+            window.alert(
+              `Account was created, but the magic link could not be sent: ${j.error ?? inv.statusText}. The user can still sign in with their password if one was set.`
+            );
+          }
+        }
         setCreateOpen(false);
         setCreateForm(emptyCreateForm());
         fetchUsers();
@@ -271,6 +329,8 @@ export function CustomersClient() {
     setResetUser(u);
     setResetUserId(isPendingLocationLogin(u) ? "" : getUserId(u));
     setResetPassword("");
+    setResetSendMagicLink(false);
+    setResetInviteEmail("");
     setResetError("");
     setResetOpen(true);
   }
@@ -282,21 +342,45 @@ export function CustomersClient() {
       setResetError("User ID is required.");
       return;
     }
-    if (!resetPassword || resetPassword.length < 8) {
+
+    const pending = isPendingLocationLogin(resetUser);
+    const sendMagic = pending && resetSendMagicLink;
+
+    if (sendMagic) {
+      if (!resetInviteEmail.trim()) {
+        setResetError("Sign-in email is required when sending a magic link.");
+        return;
+      }
+      const em = resetInviteEmail.trim().toLowerCase();
+      if (!INVITE_EMAIL_RE.test(em)) {
+        setResetError("Enter a valid sign-in email.");
+        return;
+      }
+      if (em.endsWith("@cotmedic.local")) {
+        setResetError("Use a real email address (not @cotmedic.local).");
+        return;
+      }
+    } else if (!resetPassword || resetPassword.length < 8) {
       setResetError("Password must be at least 8 characters");
       return;
     }
+
+    const inviteNorm = sendMagic ? resetInviteEmail.trim().toLowerCase() : null;
+    const passwordFinal = sendMagic ? randomInvitePassword() : resetPassword;
+
     setResetError("");
     setResetLoading(true);
     try {
       const normalizedUserId = resetUserId.trim().toLowerCase();
+      const emailForUser = inviteNorm ?? `${normalizedUserId}@cotmedic.local`;
+
       const { error: updateError } = await authClient.admin.updateUser({
         userId: resetUser.id,
         data: {
           username: normalizedUserId,
           displayUsername: resetUserId.trim(),
-          email: `${normalizedUserId}@cotmedic.local`,
-          resetPassword: false,
+          email: emailForUser,
+          resetPassword: sendMagic,
         },
       });
       if (updateError) {
@@ -305,19 +389,38 @@ export function CustomersClient() {
       }
       const { error } = await authClient.admin.setUserPassword({
         userId: resetUser.id,
-        newPassword: resetPassword,
+        newPassword: passwordFinal,
       });
       if (error) {
-        setResetError((error as { message?: string })?.message ?? "Failed to reset password");
+        setResetError((error as { message?: string })?.message ?? "Failed to set password");
         return;
       }
       await authClient.admin.revokeUserSessions({ userId: resetUser.id });
+
+      if (inviteNorm) {
+        const inv = await fetch("/api/invite-magic-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email: inviteNorm }),
+        });
+        if (!inv.ok) {
+          const j = (await inv.json().catch(() => ({}))) as { error?: string };
+          window.alert(
+            `Login was saved but the magic link could not be sent: ${j.error ?? inv.statusText}. They can sign in with their password if one was set.`
+          );
+        }
+      }
+
       setResetOpen(false);
       setResetUser(null);
       setResetUserId("");
+      setResetPassword("");
+      setResetSendMagicLink(false);
+      setResetInviteEmail("");
       fetchUsers();
     } catch {
-      setResetError("Failed to reset password");
+      setResetError("Failed to save");
     } finally {
       setResetLoading(false);
     }
@@ -336,6 +439,8 @@ export function CustomersClient() {
     setEditAddress(u.address?.trim() || "");
     setEditEmployeeLocationId(u.locationId?.trim() || "");
     setEditAdminLocationIds(parseManagedLocationIds(u.managedLocationIds));
+    const em = (u.email ?? "").trim();
+    setEditSignInEmail(em.toLowerCase().endsWith("@cotmedic.local") ? "" : em);
     setEditOpen(true);
   }
 
@@ -355,10 +460,24 @@ export function CustomersClient() {
       setEditError("Customer name is required.");
       return;
     }
+    const nextSignInEmail = editSignInEmail.trim().toLowerCase();
+    if (nextSignInEmail) {
+      if (!INVITE_EMAIL_RE.test(nextSignInEmail)) {
+        setEditError("Enter a valid sign-in email.");
+        return;
+      }
+      if (nextSignInEmail.endsWith("@cotmedic.local")) {
+        setEditError("Use a real email address (not @cotmedic.local).");
+        return;
+      }
+    }
     setEditLoading(true);
     try {
       const role = accountKindToRole(editKind);
       const data: Record<string, unknown> = { role };
+      if (nextSignInEmail) {
+        data.email = nextSignInEmail;
+      }
       if (editKind === "location") {
         data.name = editName.trim();
         data.customerType = editCustomerType;
@@ -668,15 +787,20 @@ export function CustomersClient() {
                   <Checkbox
                     checked={createForm.createLoginNow}
                     onCheckedChange={(checked) =>
-                      setCreateForm((p) => ({ ...p, createLoginNow: checked === true }))
+                      setCreateForm((p) => ({
+                        ...p,
+                        createLoginNow: checked === true,
+                        sendMagicLinkInvite: checked === true ? p.sendMagicLinkInvite : false,
+                        inviteEmail: checked === true ? p.inviteEmail : "",
+                      }))
                     }
                   />
                   <span>Create login now (optional)</span>
                 </Label>
                 {!createForm.createLoginNow && (
                   <p className="text-xs text-zinc-500">
-                    You can create this location now and set login credentials later by opening
-                    Set login on this account.
+                    You can create this location now and set login credentials later by opening Set
+                    login on this account.
                   </p>
                 )}
               </div>
@@ -741,17 +865,51 @@ export function CustomersClient() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Password</Label>
-                  <Input
-                    type="password"
-                    value={createForm.password}
-                    onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
-                    placeholder="••••••••"
-                    required
-                    minLength={8}
-                    autoComplete="nope"
-                  />
+                  <Label className="flex cursor-pointer items-center gap-2">
+                    <Checkbox
+                      checked={createForm.sendMagicLinkInvite}
+                      onCheckedChange={(checked) =>
+                        setCreateForm((p) => ({
+                          ...p,
+                          sendMagicLinkInvite: checked === true,
+                          inviteEmail: checked === true ? p.inviteEmail : "",
+                          password: checked === true ? "" : p.password,
+                        }))
+                      }
+                    />
+                    <span>Send magic link now</span>
+                  </Label>
+                  <p className="text-xs text-zinc-500">
+                    Email is only for the one-time link. They keep using the User ID above on the
+                    login page; a strong password is set automatically for that account.
+                  </p>
                 </div>
+                {createForm.sendMagicLinkInvite && (
+                  <div className="space-y-2">
+                    <Label>Sign-in email (for magic link)</Label>
+                    <Input
+                      type="email"
+                      value={createForm.inviteEmail}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, inviteEmail: e.target.value }))}
+                      placeholder="name@company.com"
+                      autoComplete="email"
+                    />
+                  </div>
+                )}
+                {!createForm.sendMagicLinkInvite && (
+                  <div className="space-y-2">
+                    <Label>Password</Label>
+                    <Input
+                      type="password"
+                      value={createForm.password}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                      placeholder="••••••••"
+                      required
+                      minLength={8}
+                      autoComplete="nope"
+                    />
+                  </div>
+                )}
               </>
             )}
             <DialogFooter>
@@ -775,6 +933,16 @@ export function CustomersClient() {
             {editError && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{editError}</p>
             )}
+            <div className="space-y-2">
+              <Label>Sign-in email</Label>
+              <Input
+                type="email"
+                value={editSignInEmail}
+                onChange={(e) => setEditSignInEmail(e.target.value)}
+                placeholder="name@company.com"
+                autoComplete="email"
+              />
+            </div>
             <div className="space-y-2">
               <Label>Account type</Label>
               <Select
@@ -890,7 +1058,7 @@ export function CustomersClient() {
             </DialogTitle>
             <p className="text-sm text-zinc-500">
               {resetUser && isPendingLocationLogin(resetUser)
-                ? `Choose a User ID and password for ${resetUser.name}.`
+                ? `Set a User ID for ${resetUser.name}. With a magic link, we email a one-time sign-in; a password is set automatically so they can keep using User ID on the login page.`
                 : `Set a new password for ${resetUser?.name ?? ""}.`}
             </p>
           </DialogHeader>
@@ -909,33 +1077,93 @@ export function CustomersClient() {
                 autoComplete="nope"
               />
             </div>
-            <div className="space-y-2">
-              <Label>New password</Label>
-              <Input
-                type="password"
-                value={resetPassword}
-                onChange={(e) => setResetPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                minLength={8}
-              />
-            </div>
+            {resetUser && isPendingLocationLogin(resetUser) && (
+              <>
+                <div className="space-y-2">
+                  <Label className="flex cursor-pointer items-center gap-2">
+                    <Checkbox
+                      checked={resetSendMagicLink}
+                      onCheckedChange={(checked) => {
+                        setResetSendMagicLink(checked === true);
+                        if (checked !== true) {
+                          setResetInviteEmail("");
+                        }
+                        setResetPassword("");
+                      }}
+                    />
+                    <span>Send magic link</span>
+                  </Label>
+                  <p className="text-xs text-zinc-500">
+                    We set a random password in the background so User ID sign-in keeps working; the
+                    link is only for first-time sign-in from email.
+                  </p>
+                </div>
+                {resetSendMagicLink && (
+                  <div className="space-y-2">
+                    <Label>Sign-in email (for magic link)</Label>
+                    <Input
+                      type="email"
+                      value={resetInviteEmail}
+                      onChange={(e) => setResetInviteEmail(e.target.value)}
+                      placeholder="name@company.com"
+                      autoComplete="email"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+            {!(resetUser && isPendingLocationLogin(resetUser) && resetSendMagicLink) && (
+              <div className="space-y-2">
+                <Label>New password</Label>
+                <Input
+                  type="password"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  minLength={8}
+                />
+              </div>
+            )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setResetSendMagicLink(false);
+                  setResetInviteEmail("");
+                  setResetOpen(false);
+                }}
+              >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={resetLoading || !resetUserId.trim() || !resetPassword || resetPassword.length < 8}
+                disabled={
+                  resetLoading ||
+                  !resetUserId.trim() ||
+                  (resetUser &&
+                    isPendingLocationLogin(resetUser) &&
+                    resetSendMagicLink &&
+                    (!resetInviteEmail.trim() ||
+                      !INVITE_EMAIL_RE.test(resetInviteEmail.trim().toLowerCase()) ||
+                      resetInviteEmail.trim().toLowerCase().endsWith("@cotmedic.local"))) ||
+                  (!(resetUser && isPendingLocationLogin(resetUser) && resetSendMagicLink) &&
+                    (!resetPassword || resetPassword.length < 8))
+                }
                 className="bg-red-600 hover:bg-red-700"
               >
                 {resetLoading
-                  ? resetUser && isPendingLocationLogin(resetUser)
+                  ? resetUser && isPendingLocationLogin(resetUser) && resetSendMagicLink
                     ? "Saving…"
-                    : "Resetting…"
-                  : resetUser && isPendingLocationLogin(resetUser)
-                    ? "Save login"
-                    : "Reset password"}
+                    : resetUser && isPendingLocationLogin(resetUser)
+                      ? "Saving…"
+                      : "Resetting…"
+                  : resetUser && isPendingLocationLogin(resetUser) && resetSendMagicLink
+                    ? "Save & send link"
+                    : resetUser && isPendingLocationLogin(resetUser)
+                      ? "Save login"
+                      : "Reset password"}
               </Button>
             </DialogFooter>
           </form>

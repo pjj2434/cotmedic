@@ -13,15 +13,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Eye, EyeOff } from "lucide-react";
+import { validateNewPassword } from "@/lib/password-policy";
 import { cn } from "@/lib/utils";
-
-function validatePassword(pwd: string): string | null {
-  if (pwd.length < 8) return "At least 8 characters";
-  if (!/[A-Z]/.test(pwd)) return "At least one capital letter";
-  if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(pwd))
-    return "At least one special character (!@#$%^&*...)";
-  return null;
-}
 
 function getPasswordStrength(pwd: string): { score: number; label: string } {
   if (!pwd) return { score: 0, label: "" };
@@ -99,7 +92,7 @@ export function ChangePasswordForm({ variant }: { variant: "forced" | "voluntary
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const validationError = validatePassword(newPassword);
+    const validationError = validateNewPassword(newPassword);
     if (validationError) {
       setError(`New password: ${validationError}`);
       return;
@@ -110,18 +103,31 @@ export function ChangePasswordForm({ variant }: { variant: "forced" | "voluntary
     }
     setLoading(true);
     try {
-      const { error: changeError } = await authClient.changePassword({
-        currentPassword,
-        newPassword,
-      });
-      if (changeError) {
-        setError((changeError as { message?: string })?.message ?? "Failed to change password");
-        return;
-      }
-      const res = await fetch("/api/clear-reset-password", { method: "POST" });
-      if (!res.ok) {
-        setError("Password changed but please sign in again.");
-        return;
+      if (variant === "forced") {
+        const res = await fetch("/api/forced-set-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newPassword }),
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          setError(j.error ?? "Failed to set password");
+          return;
+        }
+      } else {
+        const { error: changeError } = await authClient.changePassword({
+          currentPassword,
+          newPassword,
+        });
+        if (changeError) {
+          setError((changeError as { message?: string })?.message ?? "Failed to change password");
+          return;
+        }
+        const res = await fetch("/api/clear-reset-password", { method: "POST" });
+        if (!res.ok) {
+          setError("Password changed but please sign in again.");
+          return;
+        }
       }
       window.location.assign("/portal");
     } catch {
@@ -145,18 +151,20 @@ export function ChangePasswordForm({ variant }: { variant: "forced" | "voluntary
                 {error}
               </p>
             )}
-            <div className="space-y-2 md:space-y-2.5">
-              <Label htmlFor="current-password" className="text-sm md:text-base">
-                Current password
-              </Label>
-              <PasswordInput
-                id="current-password"
-                value={currentPassword}
-                onChange={setCurrentPassword}
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
-            </div>
+            {variant === "voluntary" && (
+              <div className="space-y-2 md:space-y-2.5">
+                <Label htmlFor="current-password" className="text-sm md:text-base">
+                  Current password
+                </Label>
+                <PasswordInput
+                  id="current-password"
+                  value={currentPassword}
+                  onChange={setCurrentPassword}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
+              </div>
+            )}
             <div className="space-y-2 md:space-y-2.5">
               <Label htmlFor="new-password" className="text-sm md:text-base">
                 New password
@@ -214,11 +222,11 @@ export function ChangePasswordForm({ variant }: { variant: "forced" | "voluntary
               type="submit"
               disabled={
                 loading ||
-                !currentPassword ||
+                (variant === "voluntary" && !currentPassword) ||
                 !newPassword ||
                 !confirmPassword ||
                 newPassword !== confirmPassword ||
-                !!validatePassword(newPassword)
+                !!validateNewPassword(newPassword)
               }
               className="h-11 w-full bg-red-600 text-base font-medium hover:bg-red-700 md:h-12 md:text-base"
             >

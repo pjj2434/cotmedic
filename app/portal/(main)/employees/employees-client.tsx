@@ -23,6 +23,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+
+const INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function randomInvitePassword(): string {
+  const a = new Uint8Array(18);
+  crypto.getRandomValues(a);
+  const s = Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${s}Aa1!`;
+}
 
 type User = {
   id: string;
@@ -46,10 +56,13 @@ export function EmployeesClient() {
     name: "",
     userId: "",
     password: "",
+    sendMagicLinkInvite: false,
+    inviteEmail: "",
   });
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState("");
   const [resetError, setResetError] = useState("");
+  const [resetSignInEmail, setResetSignInEmail] = useState("");
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removeUser, setRemoveUser] = useState<User | null>(null);
   const [removeLoading, setRemoveLoading] = useState(false);
@@ -93,16 +106,49 @@ export function EmployeesClient() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setCreateError("");
+    if (!createForm.userId.trim()) {
+      setCreateError("User ID is required.");
+      return;
+    }
+    if (createForm.sendMagicLinkInvite) {
+      if (!createForm.inviteEmail.trim()) {
+        setCreateError("Sign-in email is required when sending a magic link.");
+        return;
+      }
+      const em = createForm.inviteEmail.trim().toLowerCase();
+      if (!INVITE_EMAIL_RE.test(em)) {
+        setCreateError("Enter a valid sign-in email for the magic link.");
+        return;
+      }
+      if (em.endsWith("@cotmedic.local")) {
+        setCreateError("Magic link email must be a real address (not @cotmedic.local).");
+        return;
+      }
+    } else if (!createForm.password || createForm.password.length < 8) {
+      setCreateError("Password must be at least 8 characters.");
+      return;
+    }
+
+    const sendInvite =
+      createForm.sendMagicLinkInvite && createForm.inviteEmail.trim().length > 0;
+    const inviteEmailNorm = sendInvite ? createForm.inviteEmail.trim().toLowerCase() : null;
+
     setCreateLoading(true);
     try {
       const username = createForm.userId.trim().toLowerCase();
+      const emailForUser = inviteEmailNorm ?? `${username}@cotmedic.local`;
+      const password = sendInvite ? randomInvitePassword() : createForm.password;
+
       const { data, error } = await authClient.admin.createUser({
-        email: `${username}@cotmedic.local`,
-        password: createForm.password,
+        email: emailForUser,
+        password,
         name: createForm.name.trim(),
         // @ts-expect-error - admin plugin types default to user|admin; we use custom roles
         role: "technician",
-        data: { username },
+        data: {
+          username,
+          ...(sendInvite ? { resetPassword: true } : {}),
+        },
       });
       if (error) {
         setCreateError(
@@ -111,8 +157,28 @@ export function EmployeesClient() {
         return;
       }
       if (data) {
+        if (inviteEmailNorm) {
+          const inv = await fetch("/api/invite-magic-link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ email: inviteEmailNorm }),
+          });
+          if (!inv.ok) {
+            const j = (await inv.json().catch(() => ({}))) as { error?: string };
+            window.alert(
+              `Technician was created, but the magic link could not be sent: ${j.error ?? inv.statusText}. They can still sign in with their password if one was set.`
+            );
+          }
+        }
         setCreateOpen(false);
-        setCreateForm({ name: "", userId: "", password: "" });
+        setCreateForm({
+          name: "",
+          userId: "",
+          password: "",
+          sendMagicLinkInvite: false,
+          inviteEmail: "",
+        });
         fetchUsers();
       }
     } catch {
@@ -126,6 +192,8 @@ export function EmployeesClient() {
     setResetUser(u);
     setResetPassword("");
     setResetError("");
+    const em = (u.email ?? "").trim();
+    setResetSignInEmail(em.toLowerCase().endsWith("@cotmedic.local") ? "" : em);
     setResetOpen(true);
   }
 
@@ -136,9 +204,30 @@ export function EmployeesClient() {
       setResetError("Password must be at least 8 characters");
       return;
     }
+    const nextEmail = resetSignInEmail.trim().toLowerCase();
+    if (nextEmail) {
+      if (!INVITE_EMAIL_RE.test(nextEmail)) {
+        setResetError("Enter a valid sign-in email.");
+        return;
+      }
+      if (nextEmail.endsWith("@cotmedic.local")) {
+        setResetError("Use a real email address (not @cotmedic.local).");
+        return;
+      }
+    }
     setResetError("");
     setResetLoading(true);
     try {
+      if (nextEmail) {
+        const { error: emailErr } = await authClient.admin.updateUser({
+          userId: resetUser.id,
+          data: { email: nextEmail },
+        });
+        if (emailErr) {
+          setResetError((emailErr as { message?: string })?.message ?? "Failed to update email");
+          return;
+        }
+      }
       const { error } = await authClient.admin.setUserPassword({
         userId: resetUser.id,
         newPassword: resetPassword,
@@ -341,17 +430,51 @@ export function EmployeesClient() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Password</Label>
-              <Input
-                type="password"
-                value={createForm.password}
-                onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
-                placeholder="••••••••"
-                required
-                minLength={8}
-                autoComplete="nope"
-              />
+              <Label className="flex cursor-pointer items-center gap-2">
+                <Checkbox
+                  checked={createForm.sendMagicLinkInvite}
+                  onCheckedChange={(checked) =>
+                    setCreateForm((p) => ({
+                      ...p,
+                      sendMagicLinkInvite: checked === true,
+                      inviteEmail: checked === true ? p.inviteEmail : "",
+                      password: checked === true ? "" : p.password,
+                    }))
+                  }
+                />
+                <span>Send magic link now</span>
+              </Label>
+              <p className="text-xs text-zinc-500">
+                Email is for the one-time link only. A password is set automatically so they can sign
+                in with User ID on the login page.
+              </p>
             </div>
+            {createForm.sendMagicLinkInvite && (
+              <div className="space-y-2">
+                <Label>Sign-in email (for magic link)</Label>
+                <Input
+                  type="email"
+                  value={createForm.inviteEmail}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, inviteEmail: e.target.value }))}
+                  placeholder="name@company.com"
+                  autoComplete="email"
+                />
+              </div>
+            )}
+            {!createForm.sendMagicLinkInvite && (
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <Input
+                  type="password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, password: e.target.value }))}
+                  placeholder="••••••••"
+                  required
+                  minLength={8}
+                  autoComplete="nope"
+                />
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
                 Cancel
@@ -376,6 +499,16 @@ export function EmployeesClient() {
             {resetError && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{resetError}</p>
             )}
+            <div className="space-y-2">
+              <Label>Sign-in email (optional)</Label>
+              <Input
+                type="email"
+                value={resetSignInEmail}
+                onChange={(e) => setResetSignInEmail(e.target.value)}
+                placeholder="name@company.com"
+                autoComplete="email"
+              />
+            </div>
             <div className="space-y-2">
               <Label>New password</Label>
               <Input
