@@ -124,3 +124,15 @@ export const verification = sqliteTable("verification", {
   createdAt: text("createdAt"),
   updatedAt: text("updatedAt"),
 });
+
+/** Latest known delivery state per sign-in email for magic-link sends. */
+export const magicLinkDelivery = sqliteTable("magicLinkDelivery", {
+  email: text("email").primaryKey(),
+  userId: text("userId").references(() => user.id, { onDelete: "set null" }),
+  messageId: text("messageId"),
+  status: text("status").notNull().default("pending"),
+  rawEvent: text("rawEvent"),
+  lastSentAt: text("lastSentAt").notNull(),
+  lastCheckedAt: text("lastCheckedAt"),
+  updatedAt: text("updatedAt").notNull(),
+});

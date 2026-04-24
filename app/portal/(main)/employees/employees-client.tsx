@@ -24,8 +24,32 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 
 const INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function statusHint(status?: string | null): string {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "suppressed") return " Email is suppressed in Resend; remove suppression before retrying.";
+  if (s === "bounced") return " Email bounced; confirm address and domain health.";
+  if (s === "complained") return " Recipient marked prior mail as spam.";
+  return "";
+}
+
+function createMagicLinkErrorMessage(rawMessage: string | undefined, sendInvite: boolean): string {
+  const msg = String(rawMessage ?? "").toLowerCase();
+  if (!sendInvite) return rawMessage ?? "Failed to create technician";
+  if (
+    msg.includes("email") ||
+    msg.includes("bounce") ||
+    msg.includes("bounced") ||
+    msg.includes("suppress") ||
+    msg.includes("invalid")
+  ) {
+    return "Email couldn't be sent (invalid, bounced, or suppressed).";
+  }
+  return rawMessage ?? "Email couldn't be sent (invalid, bounced, or suppressed).";
+}
 
 function randomInvitePassword(): string {
   const a = new Uint8Array(18);
@@ -42,6 +66,7 @@ type User = {
   role?: string;
   banned?: boolean;
 };
+type DeliveryRow = { email: string; status: string; updatedAt: string };
 
 export function EmployeesClient() {
   const [users, setUsers] = useState<User[]>([]);
@@ -63,6 +88,42 @@ export function EmployeesClient() {
   const [createError, setCreateError] = useState("");
   const [resetError, setResetError] = useState("");
   const [resetSignInEmail, setResetSignInEmail] = useState("");
+  const [magicLinkLoading, setMagicLinkLoading] = useState(false);
+  const [magicLinkStatus, setMagicLinkStatus] = useState("");
+  const [deliveryByEmail, setDeliveryByEmail] = useState<Record<string, DeliveryRow>>({});
+
+  function schedulePostCreateDeliveryCheck(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
+    toast.message("Magic link sent. Checking delivery status…");
+    window.setTimeout(async () => {
+      try {
+        const statusRes = await fetch("/api/magic-link-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email: normalizedEmail }),
+        });
+        const payload = (await statusRes.json().catch(() => ({}))) as {
+          status?: string;
+          reason?: string;
+        };
+        const status = (payload.status ?? "unknown").toLowerCase();
+        if (status === "bounced" || status === "suppressed" || status === "complained") {
+          toast.error(`Magic link issue: ${status}. Please update email and resend.`);
+        } else if (status === "delivered" || status === "opened" || status === "clicked") {
+          toast.success(`Magic link ${status}.`);
+        } else {
+          toast.message(
+            `Magic link status is still ${status}.${payload.reason ? ` ${payload.reason}` : ""}`
+          );
+        }
+        fetchUsers();
+      } catch {
+        toast.message("Could not verify delivery yet. You can use Check email status.");
+      }
+    }, 5000);
+  }
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removeUser, setRemoveUser] = useState<User | null>(null);
   const [removeLoading, setRemoveLoading] = useState(false);
@@ -90,13 +151,50 @@ export function EmployeesClient() {
             : {}),
         },
       });
-      setUsers((res as { users?: User[] })?.users ?? []);
+      const nextUsers = (res as { users?: User[] })?.users ?? [];
+      setUsers(nextUsers);
+      const realEmails = nextUsers
+        .map((u) => (u.email ?? "").trim().toLowerCase())
+        .filter((e) => e && !e.endsWith("@cotmedic.local"));
+      if (realEmails.length > 0) {
+        const deliveryRes = await fetch("/api/magic-link-delivery", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ emails: realEmails }),
+        });
+        const payload = (await deliveryRes.json().catch(() => ({}))) as { rows?: DeliveryRow[] };
+        const map: Record<string, DeliveryRow> = {};
+        for (const row of payload.rows ?? []) map[row.email] = row;
+        setDeliveryByEmail(map);
+      } else {
+        setDeliveryByEmail({});
+      }
     } catch {
       setUsers([]);
+      setDeliveryByEmail({});
     } finally {
       setLoading(false);
     }
   }, [search]);
+
+  function deliveryChip(statusRaw: string | undefined) {
+    const status = (statusRaw ?? "").toLowerCase();
+    if (!status) return null;
+    if (status === "delivered" || status === "opened" || status === "clicked") return null;
+    const label = status[0].toUpperCase() + status.slice(1);
+    const className =
+      status === "bounced" || status === "suppressed" || status === "complained"
+        ? "bg-red-100 text-red-800"
+        : status === "pending" || status === "sent"
+          ? "bg-amber-100 text-amber-800"
+          : "bg-zinc-100 text-zinc-700";
+    return (
+      <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${className}`}>
+        Email: {label}
+      </span>
+    );
+  }
 
   useEffect(() => {
     const t = setTimeout(() => fetchUsers(), 300);
@@ -151,9 +249,8 @@ export function EmployeesClient() {
         },
       });
       if (error) {
-        setCreateError(
-          (error as { message?: string })?.message ?? "Failed to create technician"
-        );
+        const raw = (error as { message?: string })?.message;
+        setCreateError(createMagicLinkErrorMessage(raw, sendInvite));
         return;
       }
       if (data) {
@@ -164,12 +261,8 @@ export function EmployeesClient() {
             credentials: "include",
             body: JSON.stringify({ email: inviteEmailNorm }),
           });
-          if (!inv.ok) {
-            const j = (await inv.json().catch(() => ({}))) as { error?: string };
-            window.alert(
-              `Technician was created, but the magic link could not be sent: ${j.error ?? inv.statusText}. They can still sign in with their password if one was set.`
-            );
-          }
+          await inv.json().catch(() => ({}));
+          schedulePostCreateDeliveryCheck(inviteEmailNorm);
         }
         setCreateOpen(false);
         setCreateForm({
@@ -182,7 +275,11 @@ export function EmployeesClient() {
         fetchUsers();
       }
     } catch {
-      setCreateError("Failed to create technician");
+      setCreateError(
+        sendInvite
+          ? "Email couldn't be sent (invalid, bounced, or suppressed)."
+          : "Failed to create technician"
+      );
     } finally {
       setCreateLoading(false);
     }
@@ -194,7 +291,91 @@ export function EmployeesClient() {
     setResetError("");
     const em = (u.email ?? "").trim();
     setResetSignInEmail(em.toLowerCase().endsWith("@cotmedic.local") ? "" : em);
+    setMagicLinkStatus("");
     setResetOpen(true);
+  }
+
+  async function handleMagicLinkAction(kind: "resend" | "status") {
+    const email = resetSignInEmail.trim().toLowerCase();
+    if (!email) {
+      setResetError("Enter a sign-in email first.");
+      return;
+    }
+    if (!INVITE_EMAIL_RE.test(email)) {
+      setResetError("Enter a valid sign-in email.");
+      return;
+    }
+    if (email.endsWith("@cotmedic.local")) {
+      setResetError("Use a real email address (not @cotmedic.local).");
+      return;
+    }
+
+    setResetError("");
+    setMagicLinkLoading(true);
+    setMagicLinkStatus("");
+    try {
+      if (resetUser && email !== (resetUser.email ?? "").trim().toLowerCase()) {
+        const { error: syncEmailError } = await authClient.admin.updateUser({
+          userId: resetUser.id,
+          data: { email },
+        });
+        if (syncEmailError) {
+          setResetError(
+            (syncEmailError as { message?: string })?.message ?? "Failed to update email"
+          );
+          return;
+        }
+        setResetUser((prev) => (prev ? { ...prev, email } : prev));
+      }
+
+      if (kind === "resend") {
+        const inv = await fetch("/api/invite-magic-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email }),
+        });
+        const payload = (await inv.json().catch(() => ({}))) as {
+          error?: string;
+          deliveryStatus?: string | null;
+        };
+        if (!inv.ok) {
+          setResetError(payload.error ?? "Failed to send magic link");
+          return;
+        }
+        const suffix = payload.deliveryStatus ? ` (${payload.deliveryStatus})` : "";
+        setMagicLinkStatus(`Magic link sent to ${email}${suffix}.${statusHint(payload.deliveryStatus)}`);
+        return;
+      }
+
+      const statusRes = await fetch("/api/magic-link-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email }),
+      });
+      const statusPayload = (await statusRes.json().catch(() => ({}))) as {
+        status?: string;
+        reason?: string;
+      };
+      if (!statusRes.ok) {
+        setResetError(statusPayload.reason ?? "Failed to check delivery status");
+        return;
+      }
+      if ((statusPayload.status ?? "unknown") === "unknown") {
+        setMagicLinkStatus(
+          `No delivery result yet${statusPayload.reason ? `: ${statusPayload.reason}` : "."}`
+        );
+        return;
+      }
+      setMagicLinkStatus(
+        `Latest magic-link delivery status: ${statusPayload.status}.${statusHint(statusPayload.status)}`
+      );
+    } catch {
+      setResetError(kind === "resend" ? "Failed to send magic link" : "Failed to check delivery status");
+    } finally {
+      setMagicLinkLoading(false);
+    }
   }
 
   async function handleReset(e: React.FormEvent) {
@@ -337,6 +518,7 @@ export function EmployeesClient() {
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-zinc-900">{u.name}</p>
+                    {deliveryChip(deliveryByEmail[(u.email ?? "").trim().toLowerCase()]?.status)}
                     {u.banned && (
                       <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
                         Locked
@@ -476,7 +658,13 @@ export function EmployeesClient() {
               </div>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCreateOpen(false);
+                }}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={createLoading} className="bg-red-600 hover:bg-red-700">
@@ -508,6 +696,27 @@ export function EmployeesClient() {
                 placeholder="name@company.com"
                 autoComplete="email"
               />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={magicLinkLoading}
+                  onClick={() => void handleMagicLinkAction("status")}
+                >
+                  {magicLinkLoading ? "Checking…" : "Check email status"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={magicLinkLoading}
+                  onClick={() => void handleMagicLinkAction("resend")}
+                >
+                  {magicLinkLoading ? "Sending…" : "Resend magic link"}
+                </Button>
+              </div>
+              {magicLinkStatus && <p className="text-xs text-zinc-600">{magicLinkStatus}</p>}
             </div>
             <div className="space-y-2">
               <Label>New password</Label>

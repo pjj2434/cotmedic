@@ -6,6 +6,7 @@ import { buildMedikBrandedEmailHtml } from "@/lib/medik-email-layout";
 import { ensureResendForTransactionalEmail } from "@/lib/resend-email-env";
 
 const defaultFrom = "Cot Medik <onboarding@resend.dev>";
+const recentMagicLinkEmailIds = new Map<string, string>();
 
 async function resolvePortalUserIdForEmail(toEmail: string): Promise<string | undefined> {
   const norm = toEmail.trim().toLowerCase();
@@ -43,7 +44,7 @@ export async function sendPortalMagicLinkEmail(opts: { to: string; url: string }
   const portalUserId = await resolvePortalUserIdForEmail(opts.to);
 
   const resend = new Resend(key);
-  const { error } = await resend.emails.send({
+  const result = await resend.emails.send({
     from,
     to: opts.to,
     subject: "Welcome to Medik Records — your sign-in link",
@@ -60,7 +61,23 @@ export async function sendPortalMagicLinkEmail(opts: { to: string; url: string }
     }),
   });
 
+  const { error, data } = result as {
+    error?: string | { message?: string } | null;
+    data?: { id?: string } | null;
+  };
+
   if (error) {
     throw new Error(typeof error === "string" ? error : error.message ?? "Resend error");
   }
+
+  const sentEmailId = data?.id?.trim();
+  if (sentEmailId) {
+    recentMagicLinkEmailIds.set(opts.to.trim().toLowerCase(), sentEmailId);
+  }
+}
+
+export function getRecentMagicLinkEmailId(email: string): string | null {
+  const key = email.trim().toLowerCase();
+  if (!key) return null;
+  return recentMagicLinkEmailIds.get(key) ?? null;
 }

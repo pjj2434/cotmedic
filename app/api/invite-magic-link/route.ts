@@ -5,6 +5,10 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { user } from "@/db/schema";
 import { withAuthApi } from "@/lib/with-auth";
+import { getRecentMagicLinkEmailId } from "@/lib/send-magic-link-email";
+import {
+  upsertMagicLinkDeliveryLog,
+} from "@/lib/magic-link-delivery-log";
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -54,5 +58,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to send magic link" }, { status: 502 });
   }
 
-  return NextResponse.json({ success: true });
+  const messageId = getRecentMagicLinkEmailId(email);
+  await upsertMagicLinkDeliveryLog({
+    email,
+    userId: row.id,
+    messageId,
+    status: messageId ? "sent" : "pending",
+    checkedNow: false,
+  });
+
+  return NextResponse.json({ success: true, messageId, deliveryStatus: "pending" });
 }

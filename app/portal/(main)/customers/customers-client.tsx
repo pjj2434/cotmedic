@@ -32,8 +32,32 @@ import {
 } from "@/components/ui/select";
 import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, Pencil } from "lucide-react";
 import { parseManagedLocationIds } from "@/lib/portal-access";
+import { toast } from "sonner";
 
 const INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function statusHint(status?: string | null): string {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "suppressed") return " Email is suppressed in Resend; remove suppression before retrying.";
+  if (s === "bounced") return " Email bounced; confirm address and domain health.";
+  if (s === "complained") return " Recipient marked prior mail as spam.";
+  return "";
+}
+
+function createMagicLinkErrorMessage(rawMessage: string | undefined, sendInvite: boolean): string {
+  const msg = String(rawMessage ?? "").toLowerCase();
+  if (!sendInvite) return rawMessage ?? "Failed to create account";
+  if (
+    msg.includes("email") ||
+    msg.includes("bounce") ||
+    msg.includes("bounced") ||
+    msg.includes("suppress") ||
+    msg.includes("invalid")
+  ) {
+    return "Email couldn't be sent (invalid, bounced, or suppressed).";
+  }
+  return rawMessage ?? "Email couldn't be sent (invalid, bounced, or suppressed).";
+}
 
 function randomInvitePassword(): string {
   const a = new Uint8Array(18);
@@ -54,6 +78,7 @@ type User = {
   locationId?: string | null;
   managedLocationIds?: string | null;
 };
+type DeliveryRow = { email: string; status: string; updatedAt: string };
 
 type AccountKind = "location" | "employee" | "administrator";
 
@@ -150,6 +175,42 @@ export function CustomersClient() {
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState("");
   const [editSignInEmail, setEditSignInEmail] = useState("");
+  const [editMagicLinkLoading, setEditMagicLinkLoading] = useState(false);
+  const [editMagicLinkStatus, setEditMagicLinkStatus] = useState("");
+  const [deliveryByEmail, setDeliveryByEmail] = useState<Record<string, DeliveryRow>>({});
+
+  function schedulePostCreateDeliveryCheck(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
+    toast.message("Magic link sent. Checking delivery status…");
+    window.setTimeout(async () => {
+      try {
+        const statusRes = await fetch("/api/magic-link-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email: normalizedEmail }),
+        });
+        const payload = (await statusRes.json().catch(() => ({}))) as {
+          status?: string;
+          reason?: string;
+        };
+        const status = (payload.status ?? "unknown").toLowerCase();
+        if (status === "bounced" || status === "suppressed" || status === "complained") {
+          toast.error(`Magic link issue: ${status}. Please update email and resend.`);
+        } else if (status === "delivered" || status === "opened" || status === "clicked") {
+          toast.success(`Magic link ${status}.`);
+        } else {
+          toast.message(
+            `Magic link status is still ${status}.${payload.reason ? ` ${payload.reason}` : ""}`
+          );
+        }
+        fetchUsers();
+      } catch {
+        toast.message("Could not verify delivery yet. You can use Check email status.");
+      }
+    }, 5000);
+  }
 
   function getUserId(u: User) {
     if (u.username?.trim()) return u.username;
@@ -202,13 +263,52 @@ export function CustomersClient() {
           byId.set(u.id, u as User);
         }
       }
-      setUsers(Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name)));
+      const nextUsers = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+      setUsers(nextUsers);
+      const realEmails = nextUsers
+        .map((u) => (u.email ?? "").trim().toLowerCase())
+        .filter((e) => e && !e.endsWith("@cotmedic.local"));
+      if (realEmails.length > 0) {
+        const res = await fetch("/api/magic-link-delivery", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ emails: realEmails }),
+        });
+        const payload = (await res.json().catch(() => ({}))) as { rows?: DeliveryRow[] };
+        const map: Record<string, DeliveryRow> = {};
+        for (const row of payload.rows ?? []) {
+          map[row.email] = row;
+        }
+        setDeliveryByEmail(map);
+      } else {
+        setDeliveryByEmail({});
+      }
     } catch {
       setUsers([]);
+      setDeliveryByEmail({});
     } finally {
       setLoading(false);
     }
   }, [search]);
+
+  function deliveryChip(statusRaw: string | undefined) {
+    const status = (statusRaw ?? "").toLowerCase();
+    if (!status) return null;
+    if (status === "delivered" || status === "opened" || status === "clicked") return null;
+    const label = status[0].toUpperCase() + status.slice(1);
+    const className =
+      status === "bounced" || status === "suppressed" || status === "complained"
+        ? "bg-red-100 text-red-800"
+        : status === "pending" || status === "sent"
+          ? "bg-amber-100 text-amber-800"
+          : "bg-zinc-100 text-zinc-700";
+    return (
+      <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${className}`}>
+        Email: {label}
+      </span>
+    );
+  }
 
   useEffect(() => {
     const t = setTimeout(() => fetchUsers(), 300);
@@ -296,7 +396,8 @@ export function CustomersClient() {
         data,
       });
       if (error) {
-        setCreateError((error as { message?: string })?.message ?? "Failed to create account");
+        const raw = (error as { message?: string })?.message;
+        setCreateError(createMagicLinkErrorMessage(raw, sendInvite));
         return;
       }
       if (created) {
@@ -307,19 +408,19 @@ export function CustomersClient() {
             credentials: "include",
             body: JSON.stringify({ email: inviteEmailNorm }),
           });
-          if (!inv.ok) {
-            const j = (await inv.json().catch(() => ({}))) as { error?: string };
-            window.alert(
-              `Account was created, but the magic link could not be sent: ${j.error ?? inv.statusText}. The user can still sign in with their password if one was set.`
-            );
-          }
+          await inv.json().catch(() => ({}));
+          schedulePostCreateDeliveryCheck(inviteEmailNorm);
         }
         setCreateOpen(false);
         setCreateForm(emptyCreateForm());
         fetchUsers();
       }
     } catch {
-      setCreateError("Failed to create account");
+      setCreateError(
+        sendInvite
+          ? "Email couldn't be sent (invalid, bounced, or suppressed)."
+          : "Failed to create account"
+      );
     } finally {
       setCreateLoading(false);
     }
@@ -441,7 +542,92 @@ export function CustomersClient() {
     setEditAdminLocationIds(parseManagedLocationIds(u.managedLocationIds));
     const em = (u.email ?? "").trim();
     setEditSignInEmail(em.toLowerCase().endsWith("@cotmedic.local") ? "" : em);
+    setEditMagicLinkStatus("");
     setEditOpen(true);
+  }
+
+  async function handleEditMagicLinkAction(kind: "resend" | "status") {
+    const email = editSignInEmail.trim().toLowerCase();
+    if (!email) {
+      setEditError("Enter a sign-in email first.");
+      return;
+    }
+    if (!INVITE_EMAIL_RE.test(email)) {
+      setEditError("Enter a valid sign-in email.");
+      return;
+    }
+    if (email.endsWith("@cotmedic.local")) {
+      setEditError("Use a real email address (not @cotmedic.local).");
+      return;
+    }
+
+    setEditError("");
+    setEditMagicLinkLoading(true);
+    setEditMagicLinkStatus("");
+    try {
+      if (editUser && email !== (editUser.email ?? "").trim().toLowerCase()) {
+        const { error: syncEmailError } = await authClient.admin.updateUser({
+          userId: editUser.id,
+          data: { email },
+        });
+        if (syncEmailError) {
+          setEditError(
+            (syncEmailError as { message?: string })?.message ?? "Failed to update email"
+          );
+          return;
+        }
+        setEditUser((prev) => (prev ? { ...prev, email } : prev));
+      }
+
+      if (kind === "resend") {
+        const inv = await fetch("/api/invite-magic-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email }),
+        });
+        const payload = (await inv.json().catch(() => ({}))) as {
+          error?: string;
+          messageId?: string | null;
+          deliveryStatus?: string | null;
+        };
+        if (!inv.ok) {
+          setEditError(payload.error ?? "Failed to send magic link");
+          return;
+        }
+        const delivery = payload.deliveryStatus ? ` (${payload.deliveryStatus})` : "";
+        setEditMagicLinkStatus(`Magic link sent to ${email}${delivery}.${statusHint(payload.deliveryStatus)}`);
+        return;
+      }
+
+      const statusRes = await fetch("/api/magic-link-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email }),
+      });
+      const statusPayload = (await statusRes.json().catch(() => ({}))) as {
+        status?: string;
+        reason?: string;
+      };
+      if (!statusRes.ok) {
+        setEditError(statusPayload.reason ?? "Failed to check delivery status");
+        return;
+      }
+      if ((statusPayload.status ?? "unknown") === "unknown") {
+        setEditMagicLinkStatus(
+          `No delivery result yet${statusPayload.reason ? `: ${statusPayload.reason}` : "."}`
+        );
+        return;
+      }
+      setEditMagicLinkStatus(
+        `Latest magic-link delivery status: ${statusPayload.status}.${statusHint(statusPayload.status)}`
+      );
+    } catch {
+      setEditError(kind === "resend" ? "Failed to send magic link" : "Failed to check delivery status");
+    } finally {
+      setEditMagicLinkLoading(false);
+    }
   }
 
   async function handleEditSave(e: React.FormEvent) {
@@ -636,6 +822,7 @@ export function CustomersClient() {
                         Locked
                       </span>
                     )}
+                    {deliveryChip(deliveryByEmail[(u.email ?? "").trim().toLowerCase()]?.status)}
                   </div>
                   <p className="text-sm text-zinc-500">User ID: {getUserId(u)}</p>
                   {isPendingLocationLogin(u) && (
@@ -913,7 +1100,13 @@ export function CustomersClient() {
               </>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setCreateOpen(false);
+                }}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={createLoading} className="bg-red-600 hover:bg-red-700">
@@ -942,6 +1135,29 @@ export function CustomersClient() {
                 placeholder="name@company.com"
                 autoComplete="email"
               />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={editMagicLinkLoading}
+                  onClick={() => void handleEditMagicLinkAction("status")}
+                >
+                  {editMagicLinkLoading ? "Checking…" : "Check email status"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={editMagicLinkLoading}
+                  onClick={() => void handleEditMagicLinkAction("resend")}
+                >
+                  {editMagicLinkLoading ? "Sending…" : "Resend magic link"}
+                </Button>
+              </div>
+              {editMagicLinkStatus && (
+                <p className="text-xs text-zinc-600">{editMagicLinkStatus}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Account type</Label>
