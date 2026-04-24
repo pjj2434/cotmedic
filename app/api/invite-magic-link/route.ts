@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
@@ -66,6 +67,8 @@ export async function POST(request: Request) {
     status: messageId ? "sent" : "pending",
     checkedNow: false,
   });
+  revalidatePath("/portal/customers");
+  revalidatePath("/portal/employees");
 
   return NextResponse.json({ success: true, messageId, deliveryStatus: "pending" });
 }

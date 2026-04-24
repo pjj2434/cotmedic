@@ -178,6 +178,9 @@ export function CustomersClient() {
   const [editMagicLinkLoading, setEditMagicLinkLoading] = useState(false);
   const [editMagicLinkStatus, setEditMagicLinkStatus] = useState("");
   const [deliveryByEmail, setDeliveryByEmail] = useState<Record<string, DeliveryRow>>({});
+  const [filterEmailStatus, setFilterEmailStatus] = useState<
+    "all" | "bounced" | "suppressed" | "complained" | "pending" | "sent" | "issues"
+  >("all");
 
   function schedulePostCreateDeliveryCheck(email: string) {
     const normalizedEmail = email.trim().toLowerCase();
@@ -309,6 +312,17 @@ export function CustomersClient() {
       </span>
     );
   }
+
+  const filteredUsers = users.filter((u) => {
+    if (filterEmailStatus === "all") return true;
+    const status = (
+      deliveryByEmail[(u.email ?? "").trim().toLowerCase()]?.status ?? ""
+    ).toLowerCase();
+    if (filterEmailStatus === "issues") {
+      return status === "bounced" || status === "suppressed" || status === "complained";
+    }
+    return status === filterEmailStatus;
+  });
 
   useEffect(() => {
     const t = setTimeout(() => fetchUsers(), 300);
@@ -785,6 +799,20 @@ export function CustomersClient() {
               className="pl-9"
             />
           </div>
+          <Select value={filterEmailStatus} onValueChange={(v) => setFilterEmailStatus(v as typeof filterEmailStatus)}>
+            <SelectTrigger className="w-full sm:w-[190px]">
+              <SelectValue placeholder="Email status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All email statuses</SelectItem>
+              <SelectItem value="issues">All issues</SelectItem>
+              <SelectItem value="bounced">Bounced</SelectItem>
+              <SelectItem value="suppressed">Suppressed</SelectItem>
+              <SelectItem value="complained">Complained</SelectItem>
+              <SelectItem value="pending">Pending</SelectItem>
+              <SelectItem value="sent">Sent</SelectItem>
+            </SelectContent>
+          </Select>
           {search && (
             <Button
               variant="ghost"
@@ -802,11 +830,11 @@ export function CustomersClient() {
       <div className="rounded-xl border border-zinc-200 bg-white">
         {loading ? (
           <div className="p-8 text-center text-zinc-500">Loading…</div>
-        ) : users.length === 0 ? (
+        ) : filteredUsers.length === 0 ? (
           <div className="p-8 text-center text-zinc-500">No accounts found.</div>
         ) : (
           <div className="divide-y divide-zinc-100">
-            {users.map((u) => (
+            {filteredUsers.map((u) => (
               <div
                 key={u.id}
                 className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
