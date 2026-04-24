@@ -524,6 +524,8 @@ function WorkOrderListRowWithOptionalFileDrop({
 }) {
   const [fileDragOver, setFileDragOver] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const parsedFields = useMemo(() => extractSearchFields(o), [o]);
+  const serialLabel = parsedFields.serial || "—";
 
   const handleDragEnter = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
@@ -612,6 +614,18 @@ function WorkOrderListRowWithOptionalFileDrop({
           >
             {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
           </p>
+          <div className="mt-1">
+            <span
+              className={cn(
+                "inline-flex items-center rounded-md px-2 py-0.5 font-medium",
+                clientLike
+                  ? "bg-red-50 text-xs text-red-700 ring-1 ring-red-100"
+                  : "bg-zinc-100 text-[11px] text-zinc-700 ring-1 ring-zinc-200 sm:text-xs"
+              )}
+            >
+              Serial: {serialLabel}
+            </span>
+          </div>
           {showOwnerStyleFilters && !o.hasFiles && (
             <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">
               <AlertTriangle className="size-3.5" />
