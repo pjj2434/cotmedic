@@ -78,6 +78,8 @@ export const workOrder = sqliteTable("workOrder", {
     .references(() => user.id, { onDelete: "cascade" }),
   type: text("type").notNull(), // "cot" | "lift"
   formData: text("formData").notNull(), // JSON
+  /** User who submitted the report (owner vs technician). Null on legacy rows (excluded from tech analytics). */
+  submittedById: text("submittedById").references(() => user.id, { onDelete: "set null" }),
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
 });

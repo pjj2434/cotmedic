@@ -77,6 +77,8 @@ type WorkOrder = {
   createdAt: string;
   technicianName: string;
   customerName: string;
+  submittedById?: string | null;
+  submittedByName?: string | null;
   hasFiles?: boolean;
 };
 
@@ -614,6 +616,11 @@ function WorkOrderListRowWithOptionalFileDrop({
           >
             {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
           </p>
+          {showOwnerStyleFilters && (
+            <p className="mt-0.5 text-xs text-zinc-500">
+              Submitted by: {o.submittedByName ?? "—"}
+            </p>
+          )}
           <div className="mt-1">
             <span
               className={cn(

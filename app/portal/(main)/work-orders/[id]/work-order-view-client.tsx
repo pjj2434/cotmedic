@@ -47,6 +47,8 @@ type WorkOrder = {
   createdAt: string;
   technicianName: string;
   customerName: string;
+  submittedById?: string | null;
+  submittedByName?: string | null;
 };
 
 type WorkOrderFile = {
@@ -291,6 +293,12 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
           <p className="mb-2 text-center text-xs text-zinc-500">
             Tap or click preview to enlarge
           </p>
+        )}
+        {role === "owner" && (
+          <div className="mb-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700 shadow-sm">
+            <span className="font-medium text-zinc-900">Submitted by: </span>
+            {workOrder.submittedByName ?? "—"}
+          </div>
         )}
         <WorkOrderFormView type={workOrder.type} formData={workOrder.formData} compact />
       </div>

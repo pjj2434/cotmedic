@@ -11,6 +11,7 @@ const ownerNavItems = [
   { href: "/portal/employees", label: "Employees" },
   { href: "/portal/customers", label: "Locations & logins" },
   { href: "/portal/work-orders", label: "Work Orders" },
+  { href: "/portal/analytics", label: "Analytics" },
   { href: "/portal/settings/password", label: "Settings" },
 ];
 

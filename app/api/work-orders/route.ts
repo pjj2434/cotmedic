@@ -59,7 +59,7 @@ export async function GET(request: Request) {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(workOrder.createdAt));
 
-  const ordersWithNames = await Promise.all(
+  const techCustomerPairs = await Promise.all(
     orders.map(async (o) => {
       const [tech, cust] = await Promise.all([
         db.select({ name: user.name }).from(user).where(eq(user.id, o.technicianId)).limit(1),
@@ -72,6 +72,22 @@ export async function GET(request: Request) {
       };
     })
   );
+
+  const submitterIds = [
+    ...new Set(
+      techCustomerPairs.map((o) => o.submittedById).filter((id): id is string => !!id?.trim())
+    ),
+  ];
+  const submitterRows =
+    submitterIds.length > 0
+      ? await db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, submitterIds))
+      : [];
+  const submitterNames = new Map(submitterRows.map((s) => [s.id, s.name]));
+
+  const ordersWithNames = techCustomerPairs.map((o) => ({
+    ...o,
+    submittedByName: o.submittedById ? (submitterNames.get(o.submittedById) ?? "—") : null,
+  }));
 
   const orderIds = ordersWithNames.map((o) => o.id);
   const fileRows = orderIds.length
@@ -144,6 +160,7 @@ export async function POST(request: Request) {
     customerId,
     type,
     formData: JSON.stringify(formData),
+    submittedById: authUser.id,
     createdAt: now,
     updatedAt: now,
   });
