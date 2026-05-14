@@ -249,10 +249,12 @@ export default function CotMedikRepairFormPage() {
   const customerName = searchParams.get("customerName");
   const returnTo = searchParams.get("returnTo");
   const workOrderId = searchParams.get("workOrderId");
+  const allowAnother = searchParams.get("allowAnother") === "1";
   const router = useRouter();
   const lockTechnicianName = Boolean(techId);
   const isEditMode = Boolean(workOrderId);
   const [loadingExisting, setLoadingExisting] = useState(isEditMode);
+  const [chainSaveHint, setChainSaveHint] = useState(false);
 
   useEffect(() => {
     if (techName) setForm((f) => ({ ...f, techName }));
@@ -346,7 +348,24 @@ export default function CotMedikRepairFormPage() {
       return { ...f, stairChairParts: arr };
     });
 
-  const handleSubmit = async () => {
+  const resetFormForAnotherReport = () => {
+    const preservedTech = (techName ?? "").trim();
+    const preservedCustomer = (customerName ?? "").trim();
+    const next: FormState = {
+      ...initialFormState,
+      techName: preservedTech,
+      companyName: preservedCustomer,
+    };
+    if (useCurrentDateTime) {
+      const now = getCurrentPickerValues();
+      next.date = now.date;
+      next.time = now.time;
+    }
+    setForm(next);
+  };
+
+  const handleSubmit = async (options?: { chain?: boolean }) => {
+    const chain = options?.chain === true;
     setSubmitError(null);
     setSubmitting(true);
     const normalizedForm: FormState = {
@@ -398,8 +417,15 @@ export default function CotMedikRepairFormPage() {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error ?? "Failed to save");
         }
-        if (returnTo) {
+        if (returnTo && !chain) {
           router.push(returnTo);
+          return;
+        }
+        if (chain) {
+          setSubmitting(false);
+          resetFormForAnotherReport();
+          setChainSaveHint(true);
+          setTimeout(() => setChainSaveHint(false), 5000);
           return;
         }
       } catch (e) {
@@ -658,10 +684,15 @@ export default function CotMedikRepairFormPage() {
                 {submitError}
               </p>
             )}
+            {chainSaveHint && (
+              <p className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
+                Report saved. Customer and technician are still selected — fill in the next unit or visit details below.
+              </p>
+            )}
             <button
               type="button"
               className="mt-1 w-full rounded-[3px] border-0 bg-[#111] px-3 py-3.5 text-base uppercase tracking-[2px] text-white disabled:cursor-not-allowed disabled:opacity-70"
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={submitting || loadingExisting}
             >
               {submitted
@@ -674,6 +705,16 @@ export default function CotMedikRepairFormPage() {
                     ? "Update Report"
                     : "Submit Report"}
             </button>
+            {allowAnother && customerId && !isEditMode && (
+              <button
+                type="button"
+                className="mt-2.5 w-full rounded-[3px] border border-[#111] bg-white px-3 py-3 text-sm font-semibold uppercase tracking-[1.5px] text-[#111] hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-70"
+                onClick={() => handleSubmit({ chain: true })}
+                disabled={submitting || loadingExisting}
+              >
+                {submitting ? "Saving…" : "Submit & start another"}
+              </button>
+            )}
           </div>
 
           <div className="flex justify-between gap-3 border-t border-[#d0d0d0] bg-[#f0f0f0] px-9 py-3.5 max-sm:flex-col max-sm:items-start">

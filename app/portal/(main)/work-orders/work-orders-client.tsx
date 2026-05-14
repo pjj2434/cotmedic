@@ -967,11 +967,12 @@ export function WorkOrdersClient({
   });
 
   const activeTechnician = role === "owner" ? selectedTechnician : { id: userId, name: userName };
+  const ownerChainSubmitParam = role === "owner" ? "&allowAnother=1" : "";
   const formUrl =
     workType && selectedCustomer && activeTechnician
       ? workType === "cot"
-        ? `/repair-form?techName=${encodeURIComponent(activeTechnician.name)}&techId=${activeTechnician.id}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
-        : `/lift-repair-form?techName=${encodeURIComponent(activeTechnician.name)}&techId=${activeTechnician.id}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}`
+        ? `/repair-form?techName=${encodeURIComponent(activeTechnician.name)}&techId=${activeTechnician.id}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}${ownerChainSubmitParam}`
+        : `/lift-repair-form?techName=${encodeURIComponent(activeTechnician.name)}&techId=${activeTechnician.id}&customerId=${selectedCustomer.id}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/work-orders")}${ownerChainSubmitParam}`
       : null;
 
   const ownerCustomerOptions = useMemo(() => {
