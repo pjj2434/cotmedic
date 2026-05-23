@@ -3,7 +3,8 @@ import { UploadThingError } from "uploadthing/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { clientFile, workOrder, workOrderFile } from "@/db/schema";
+import { clientFile, clientRecord, clientRecordFile, workOrder, workOrderFile } from "@/db/schema";
+import { utapi } from "@/lib/uploadthing-server";
 import { eq } from "drizzle-orm";
 
 const f = createUploadthing();
@@ -85,6 +86,53 @@ export const ourFileRouter = {
         createdAt: now,
       });
       return { workOrderId: metadata.workOrderId, fileId: id };
+    }),
+  /** Service agreements: private ACL (overrides app default public-read). Expiry from UT dashboard. */
+  clientRecordServiceAgreementUploader: f({
+    pdf: { maxFileSize: "16MB", maxFileCount: 10, acl: "private" },
+    image: { maxFileSize: "8MB", maxFileCount: 10, acl: "private" },
+  })
+    .input(z.object({ clientRecordId: z.string().min(1) }))
+    .middleware(async ({ req, input }) => {
+      const session = await auth.api.getSession({ headers: req.headers });
+      if (!session) throw new UploadThingError("Unauthorized");
+      const role = (session.user.role ?? "client") as string;
+      if (role !== "owner") {
+        throw new UploadThingError("Only owners can upload service agreements");
+      }
+
+      const [record] = await db
+        .select({ id: clientRecord.id })
+        .from(clientRecord)
+        .where(eq(clientRecord.id, input.clientRecordId))
+        .limit(1);
+      if (!record) throw new UploadThingError("Client not found");
+
+      return { userId: session.user.id, clientRecordId: record.id };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const fileKey = file.key;
+
+      try {
+        await utapi.updateACL(fileKey, "private");
+      } catch {
+        // Continue if ACL already private or update unavailable
+      }
+
+      await db.insert(clientRecordFile).values({
+        id,
+        clientRecordId: metadata.clientRecordId,
+        fileKey,
+        url: file.ufsUrl ?? file.url,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+        uploadedById: metadata.userId,
+        createdAt: now,
+      });
+      return { clientRecordId: metadata.clientRecordId, fileId: id };
     }),
 } satisfies FileRouter;
 
