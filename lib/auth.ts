@@ -21,12 +21,6 @@ function isLocalhostOrigin(origin: string): boolean {
 function validateProductionAuthBaseUrl(origin: string) {
   if (!isLocalhostOrigin(origin)) return;
 
-  if (process.env.VERCEL_ENV === "production") {
-    console.error(
-      "[auth] baseURL resolved to localhost on Vercel production. Set BETTER_AUTH_URL or NEXT_PUBLIC_APP_URL to your public https origin (magic links and password reset links use this)."
-    );
-  }
-
   const enforce =
     process.env.AUTH_ENFORCE_PRODUCTION_URL === "1" ||
     process.env.AUTH_ENFORCE_PRODUCTION_URL === "true";

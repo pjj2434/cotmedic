@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, type DragEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,11 @@ import {
 import Link from "next/link";
 import { printWorkOrderContent } from "@/lib/print-work-order";
 import { cn } from "@/lib/utils";
+import {
+  parseWorkOrderFormSearchFields,
+  workOrderMatchesSearchQuery,
+  WORK_ORDER_SEARCH_QUERY_PARAM,
+} from "@/lib/work-order-search";
 import { isLocationPortalRole } from "@/lib/portal-roles";
 import {
   Dialog,
@@ -141,10 +147,12 @@ function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
     if (adjusted !== "—") detailPairs.push(`Adjusted: ${adjusted}`);
     if (lockBarReplaced !== "—") detailPairs.push(`Lock bar replaced: ${lockBarReplaced}`);
 
+    const { serial, ambulance } = parseWorkOrderFormSearchFields(order.formData);
+
     return {
       dateIso: parseDateToIso(data.date),
-      serial: String(data.sn ?? "").trim(),
-      ambulance: String(data.ambulance ?? data.bus ?? "").trim(),
+      serial,
+      ambulance,
       notes: String(data.description ?? "").trim(),
       partsUsed: listToText(data.partsUsed),
       partsNeeded: listToText(data.partsNeeded),
@@ -692,6 +700,10 @@ export function WorkOrdersClient({
   userName: string;
   userId: string;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlSearchQuery = searchParams.get(WORK_ORDER_SEARCH_QUERY_PARAM)?.trim() ?? "";
+
   const clientLike = isLocationPortalRole(role);
   const showOwnerStyleFilters = role === "owner" || role === "administrator";
   const canAttachFilesOnList =
@@ -709,6 +721,7 @@ export function WorkOrdersClient({
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterSerial, setFilterSerial] = useState("");
   const [filterAmbulance, setFilterAmbulance] = useState("");
+  const [filterQuery, setFilterQuery] = useState("");
   const [filterCustomer, setFilterCustomer] = useState<Customer | null>(null);
 
   // Technician: new work order flow
@@ -761,6 +774,32 @@ export function WorkOrdersClient({
     }
     setListFiltersHydrated(true);
   }, [shouldPersistListFilters, listFiltersStorageKey]);
+
+  useEffect(() => {
+    if (!listFiltersHydrated) return;
+    setFilterQuery(urlSearchQuery);
+  }, [urlSearchQuery, listFiltersHydrated]);
+
+  useEffect(() => {
+    if (!listFiltersHydrated || role === "technician") return;
+    const t = window.setTimeout(() => {
+      const next = filterQuery.trim();
+      const current = searchParams.get(WORK_ORDER_SEARCH_QUERY_PARAM)?.trim() ?? "";
+      if (next === current) return;
+      const path = next
+        ? `/portal/work-orders?${WORK_ORDER_SEARCH_QUERY_PARAM}=${encodeURIComponent(next)}`
+        : "/portal/work-orders";
+      router.replace(path, { scroll: false });
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [filterQuery, listFiltersHydrated, role, router, searchParams]);
+
+  function clearSearchQuery() {
+    setFilterQuery("");
+    if (searchParams.get(WORK_ORDER_SEARCH_QUERY_PARAM)) {
+      router.replace("/portal/work-orders", { scroll: false });
+    }
+  }
 
   useEffect(() => {
     if (!shouldPersistListFilters || !listFiltersHydrated) return;
@@ -931,6 +970,7 @@ export function WorkOrdersClient({
       const q = filterAmbulance.trim().toLowerCase();
       if (!parsed.ambulance.toLowerCase().includes(q)) return false;
     }
+    if (filterQuery.trim() && !workOrderMatchesSearchQuery(o, filterQuery)) return false;
     if (filterFiles === "has" && !o.hasFiles) return false;
     if (filterFiles === "none" && o.hasFiles) return false;
 
@@ -938,14 +978,21 @@ export function WorkOrdersClient({
   });
 
   const ownerLike = role === "owner" || role === "administrator";
+  const searchQueryActive = filterQuery.trim().length > 0;
   const visibleOrders = clientLike
-    ? filteredOrders.slice(0, clientListLimit)
+    ? searchQueryActive
+      ? filteredOrders
+      : filteredOrders.slice(0, clientListLimit)
     : ownerLike
-      ? filteredOrders.slice(0, ownerListLimit)
+      ? searchQueryActive
+        ? filteredOrders
+        : filteredOrders.slice(0, ownerListLimit)
       : filteredOrders;
-  const hasMore = clientLike
-    ? filteredOrders.length > clientListLimit
-    : ownerLike && filteredOrders.length > ownerListLimit;
+  const hasMore = searchQueryActive
+    ? false
+    : clientLike
+      ? filteredOrders.length > clientListLimit
+      : ownerLike && filteredOrders.length > ownerListLimit;
 
   const reportRows: WorkOrderReportRow[] = filteredOrders.map((o) => {
     const parsed = extractSearchFields(o);
@@ -1270,6 +1317,19 @@ export function WorkOrdersClient({
                   </Combobox>
                 </div>
               )}
+              {showOwnerStyleFilters && (
+                <div className="flex min-w-0 flex-col justify-end gap-1 sm:col-span-2">
+                  <Label className="min-h-4.5 text-xs font-medium leading-none text-zinc-600">
+                    Search (contains)
+                  </Label>
+                  <Input
+                    placeholder="Model, serial, customer, technician…"
+                    value={filterQuery}
+                    onChange={(e) => setFilterQuery(e.target.value)}
+                    className="h-7 min-h-7 w-full min-w-0 rounded-md border-zinc-200 px-2 py-0 text-xs"
+                  />
+                </div>
+              )}
               <div className="flex min-w-0 flex-col justify-end gap-1">
                 <Label className="min-h-4.5 text-xs font-medium leading-none text-zinc-600">
                   Serial number
@@ -1306,6 +1366,7 @@ export function WorkOrdersClient({
                     setFilterCustomer(null);
                     setFilterSerial("");
                     setFilterAmbulance("");
+                    clearSearchQuery();
                   }}
                 >
                   Clear filters
@@ -1314,6 +1375,32 @@ export function WorkOrdersClient({
             </div>
           )}
         </div>
+        {searchQueryActive && (
+          <div
+            className={cn(
+              "border-b px-4 py-2.5 sm:px-5",
+              clientLike ? "border-zinc-100 bg-red-50/50" : "border-red-100 bg-red-50/60"
+            )}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-700">
+              <p>
+                Showing{" "}
+                <span className="font-medium text-zinc-900">{filteredOrders.length}</span> work order
+                {filteredOrders.length === 1 ? "" : "s"} matching &ldquo;
+                <span className="font-medium text-zinc-900">{filterQuery.trim()}</span>&rdquo;
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={clearSearchQuery}
+              >
+                Clear search
+              </Button>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div
             className={cn(
@@ -1324,7 +1411,11 @@ export function WorkOrdersClient({
             Loading…
           </div>
         ) : filteredOrders.length === 0 ? (
-          clientLike ? (
+          searchQueryActive ? (
+            <div className="p-8 text-center text-zinc-500">
+              No work orders match &ldquo;{filterQuery.trim()}&rdquo;.
+            </div>
+          ) : clientLike ? (
             <div className="p-6 sm:p-8">
               <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/70 px-6 py-10 text-center">
                 <FileText className="mx-auto size-11 text-red-200" strokeWidth={1.25} />

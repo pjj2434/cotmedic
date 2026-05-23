@@ -11,6 +11,5 @@ export function ensureResendForTransactionalEmail(
   if (process.env.NODE_ENV === "production") {
     throw new Error(`RESEND_API_KEY is required in production (${context}).`);
   }
-  console.warn(`[${context}] RESEND_API_KEY is not set; email was not sent.`);
   return false;
 }

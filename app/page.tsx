@@ -262,7 +262,18 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-8 text-center text-sm text-zinc-500">
-          © {new Date().getFullYear()} Cot/Liftmedik. All rights reserved.
+          <span className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+            <a href="/privacy" className="hover:text-zinc-700 hover:underline">
+              Privacy Policy
+            </a>
+            <span aria-hidden>·</span>
+            <a href="/terms" className="hover:text-zinc-700 hover:underline">
+              Terms of Use
+            </a>
+          </span>
+          <span className="mt-2 block">
+            © {new Date().getFullYear()} Cot/Liftmedik. All rights reserved.
+          </span>
         </p>
       </div>
 

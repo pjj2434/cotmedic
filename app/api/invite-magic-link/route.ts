@@ -54,8 +54,7 @@ export async function POST(request: Request) {
       body: { email, callbackURL: "/portal" },
       headers: await headers(),
     });
-  } catch (e) {
-    console.error("[invite-magic-link]", e);
+  } catch {
     return NextResponse.json({ error: "Failed to send magic link" }, { status: 502 });
   }
 

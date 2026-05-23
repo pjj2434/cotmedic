@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { OwnerPortalSearch } from "@/components/owner-portal-search";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +11,7 @@ const ownerNavItems = [
   { href: "/portal", label: "Dashboard" },
   { href: "/portal/employees", label: "Employees" },
   { href: "/portal/customers", label: "Locations & logins" },
+  { href: "/portal/client-database", label: "Client database" },
   { href: "/portal/work-orders", label: "Work Orders" },
   { href: "/portal/analytics", label: "Analytics" },
   { href: "/portal/settings/password", label: "Settings" },
@@ -40,6 +42,7 @@ export function OwnerPortalNav({ children }: { children: React.ReactNode }) {
             <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-8 w-auto rounded-sm sm:h-9" />
           </div>
           <div className="flex min-w-0 items-center justify-end">
+            <OwnerPortalSearch />
             <button
               type="button"
               onClick={handleSignOut}

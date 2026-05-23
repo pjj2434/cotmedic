@@ -127,6 +127,87 @@ export const verification = sqliteTable("verification", {
   updatedAt: text("updatedAt"),
 });
 
+/** CRM client record (QuickBooks-synced); separate from portal location logins. */
+export const clientRecord = sqliteTable("clientRecord", {
+  id: text("id").primaryKey(),
+  /** QuickBooks DisplayName (must be unique in QB). */
+  name: text("name").notNull(),
+  quickbooksCustomerId: text("quickbooksCustomerId").unique(),
+  companyName: text("companyName"),
+  email: text("email"),
+  phone: text("phone"),
+  billStreet: text("billStreet"),
+  billCity: text("billCity"),
+  billState: text("billState"),
+  billZip: text("billZip"),
+  billCountry: text("billCountry"),
+  /** Optional link to portal location user (role=client). */
+  portalUserId: text("portalUserId").references(() => user.id, { onDelete: "set null" }),
+  /** Balance in cents from QuickBooks Customer.Balance. */
+  balanceCents: integer("balanceCents").notNull().default(0),
+  /** current | open | overdue | unknown */
+  paymentStatus: text("paymentStatus").notNull().default("unknown"),
+  /** JSON array of manual tag ids (e.g. vip). Overdue/inactive are derived at read time. */
+  tags: text("tags").notNull().default("[]"),
+  /** CRM active flag (separate from QuickBooks Customer.Active). */
+  isActive: integer("isActive", { mode: "boolean" }).notNull().default(true),
+  notes: text("notes"),
+  lastQuickbooksSyncAt: text("lastQuickbooksSyncAt"),
+  createdAt: text("createdAt").notNull(),
+  updatedAt: text("updatedAt").notNull(),
+});
+
+/** Service agreement files for CRM client records (private UploadThing storage). */
+export const clientRecordFile = sqliteTable("clientRecordFile", {
+  id: text("id").primaryKey(),
+  clientRecordId: text("clientRecordId")
+    .notNull()
+    .references(() => clientRecord.id, { onDelete: "cascade" }),
+  fileKey: text("fileKey").notNull(),
+  /** Original UploadThing URL; use signed URLs for private access. */
+  url: text("url").notNull(),
+  name: text("name").notNull(),
+  size: integer("size").notNull(),
+  mimeType: text("mimeType").notNull(),
+  uploadedById: text("uploadedById").references(() => user.id, { onDelete: "set null" }),
+  createdAt: text("createdAt").notNull(),
+});
+
+/** Singleton QuickBooks OAuth connection (id always "default"). */
+export const quickbooksConnection = sqliteTable("quickbooksConnection", {
+  id: text("id").primaryKey(),
+  realmId: text("realmId").notNull(),
+  refreshToken: text("refreshToken").notNull(),
+  accessToken: text("accessToken"),
+  accessTokenExpiresAt: text("accessTokenExpiresAt"),
+  environment: text("environment").notNull(),
+  connectedAt: text("connectedAt").notNull(),
+  updatedAt: text("updatedAt").notNull(),
+});
+
+export const clientContact = sqliteTable("clientContact", {
+  id: text("id").primaryKey(),
+  clientRecordId: text("clientRecordId")
+    .notNull()
+    .references(() => clientRecord.id, { onDelete: "cascade" }),
+  /** QuickBooks sub-customer / job id when synced from QBO. */
+  quickbooksCustomerId: text("quickbooksCustomerId").unique(),
+  name: text("name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  /** Site or branch label (e.g. sub-customer name in QuickBooks). */
+  location: text("location"),
+  street: text("street"),
+  city: text("city"),
+  state: text("state"),
+  zip: text("zip"),
+  country: text("country"),
+  /** Notes from QuickBooks sub-customer or entered manually. */
+  notes: text("notes"),
+  createdAt: text("createdAt").notNull(),
+  updatedAt: text("updatedAt").notNull(),
+});
+
 /** Latest known delivery state per sign-in email for magic-link sends. */
 export const magicLinkDelivery = sqliteTable("magicLinkDelivery", {
   email: text("email").primaryKey(),

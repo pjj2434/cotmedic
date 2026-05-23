@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -145,9 +147,18 @@ function isPendingLocationLogin(u: User): boolean {
 }
 
 export function CustomersClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightId = searchParams.get("highlight");
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const processedHighlightRef = useRef<string | null>(null);
+
+  const HIGHLIGHT_DURATION_MS = 3000;
+
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetUser, setResetUser] = useState<User | null>(null);
@@ -314,6 +325,7 @@ export function CustomersClient() {
   }
 
   const filteredUsers = users.filter((u) => {
+    if (highlightedRowId && u.id === highlightedRowId) return true;
     if (filterEmailStatus === "all") return true;
     const status = (
       deliveryByEmail[(u.email ?? "").trim().toLowerCase()]?.status ?? ""
@@ -323,6 +335,35 @@ export function CustomersClient() {
     }
     return status === filterEmailStatus;
   });
+
+  useEffect(() => {
+    if (!highlightId || loading) return;
+    if (processedHighlightRef.current === highlightId) return;
+
+    const user = users.find((u) => u.id === highlightId);
+    if (!user) return;
+
+    processedHighlightRef.current = highlightId;
+    router.replace("/portal/customers", { scroll: false });
+    setHighlightedRowId(highlightId);
+
+    const scrollT = window.setTimeout(() => {
+      rowRefs.current[highlightId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
+
+    const clearT = window.setTimeout(() => {
+      setHighlightedRowId(null);
+      processedHighlightRef.current = null;
+    }, HIGHLIGHT_DURATION_MS);
+
+    return () => {
+      window.clearTimeout(scrollT);
+      window.clearTimeout(clearT);
+    };
+  }, [highlightId, loading, users, router]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchUsers(), 300);
@@ -837,7 +878,14 @@ export function CustomersClient() {
             {filteredUsers.map((u) => (
               <div
                 key={u.id}
-                className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                ref={(el) => {
+                  rowRefs.current[u.id] = el;
+                }}
+                className={cn(
+                  "flex flex-col gap-2 border-l-4 border-transparent px-4 py-3 transition-[background-color,border-color,box-shadow] duration-500 sm:flex-row sm:items-center sm:justify-between",
+                  highlightedRowId === u.id &&
+                    "scroll-mt-20 border-red-500 bg-red-50/80 shadow-sm"
+                )}
               >
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
