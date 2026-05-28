@@ -406,19 +406,6 @@ export function ClientDatabaseClient() {
         </div>
       </div>
 
-      {!qbAppConfigured && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          QuickBooks is not configured on the server yet. Your administrator must add the Intuit
-          app credentials in the hosting environment and register this redirect URI in the Intuit
-          Developer portal:{" "}
-          <code className="rounded bg-amber-100/80 px-1 break-all">
-            {typeof window !== "undefined"
-              ? `${window.location.origin}/api/quickbooks/callback`
-              : "/api/quickbooks/callback"}
-          </code>
-        </div>
-      )}
-
       <div className="rounded-xl border border-zinc-200 bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-zinc-200 p-4 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">
