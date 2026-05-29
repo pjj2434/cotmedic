@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { parseWorkOrderDateToIso } from "@/lib/work-order-date";
 
 const fieldInputClass =
   "w-full min-w-0 max-w-full rounded-[3px] border border-[#d0d0d0] bg-[#f4f4f4] px-3 py-[9px] text-sm text-[#111] outline-none transition-[border-color,box-shadow] focus:border-[#111] focus:shadow-[0_0_0_2px_rgba(0,0,0,0.08)] placeholder:text-[#777] placeholder:opacity-50";
@@ -385,6 +386,11 @@ export default function CotMedikRepairFormPage() {
       setSubmitting(false);
       return;
     }
+    if (!parseWorkOrderDateToIso(normalizedForm.date)) {
+      setSubmitError("Date is required.");
+      setSubmitting(false);
+      return;
+    }
     if (isEditMode && workOrderId) {
       try {
         const res = await fetch("/api/work-orders", {
@@ -493,6 +499,7 @@ export default function CotMedikRepairFormPage() {
                     value={form.date}
                     onChange={(e) => set("date", e.target.value)}
                     disabled={useCurrentDateTime}
+                    required
                   />
                 </div>
                 <div className="flex flex-col gap-[5px]">

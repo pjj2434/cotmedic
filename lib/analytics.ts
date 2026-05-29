@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { parseWorkOrderFormDateTime } from "@/lib/work-order-date";
 import { workOrder, user, workOrderFile } from "@/db/schema";
 import { eq, sql, desc, gte, inArray } from "drizzle-orm";
 
@@ -10,7 +11,14 @@ export type Analytics = {
   totalCustomers: number;
   totalTechnicians: number;
   totalFiles: number;
-  recentOrders: { id: string; type: string; createdAt: string; hasFiles: boolean }[];
+  recentOrders: {
+    id: string;
+    type: string;
+    createdAt: string;
+    workDateIso: string;
+    workTime: string;
+    hasFiles: boolean;
+  }[];
 };
 
 export async function getAnalytics(): Promise<Analytics> {
@@ -29,6 +37,7 @@ export async function getAnalytics(): Promise<Analytics> {
       id: workOrder.id,
       type: workOrder.type,
       createdAt: workOrder.createdAt,
+      formData: workOrder.formData,
     })
       .from(workOrder)
       .orderBy(desc(workOrder.createdAt))
@@ -52,9 +61,16 @@ export async function getAnalytics(): Promise<Analytics> {
     totalCustomers: Number(totalCustomers[0]?.count ?? 0),
     totalTechnicians: Number(totalTechnicians[0]?.count ?? 0),
     totalFiles: Number(totalFiles[0]?.count ?? 0),
-    recentOrders: recentOrders.map((o) => ({
-      ...o,
-      hasFiles: fileOrderIds.has(o.id),
-    })),
+    recentOrders: recentOrders.map((o) => {
+      const { dateIso, time } = parseWorkOrderFormDateTime(o.formData);
+      return {
+        id: o.id,
+        type: o.type,
+        createdAt: o.createdAt,
+        workDateIso: dateIso,
+        workTime: time,
+        hasFiles: fileOrderIds.has(o.id),
+      };
+    }),
   };
 }

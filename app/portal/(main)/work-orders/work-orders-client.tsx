@@ -54,6 +54,11 @@ import { ReportDateField } from "@/components/report-date-field";
 import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
 import { uploadFiles } from "@/lib/uploadthing";
 import { toast } from "sonner";
+import {
+  formatCalendarIsoDate,
+  formatWorkOrderDisplayDate,
+  parseWorkOrderDateToIso,
+} from "@/lib/work-order-date";
 
 const CLIENT_CONTACT_EMAIL = "marcelo@cotmedik.com";
 
@@ -81,6 +86,8 @@ type WorkOrder = {
   type: string;
   formData: string;
   createdAt: string;
+  workDateIso?: string;
+  workTime?: string;
   technicianName: string;
   customerName: string;
   submittedById?: string | null;
@@ -104,23 +111,6 @@ function formatYesNo(value: unknown): string {
   if (value === true) return "Yes";
   if (value === false) return "No";
   return "—";
-}
-
-function parseDateToIso(value: unknown): string {
-  if (typeof value !== "string") return "";
-  const raw = value.trim();
-  if (!raw) return "";
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const us = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!us) return "";
-  const mm = Number(us[1]);
-  const dd = Number(us[2]);
-  const yyyy = Number(us[3]);
-  const d = new Date(yyyy, mm - 1, dd);
-  const valid = d.getFullYear() === yyyy && d.getMonth() === mm - 1 && d.getDate() === dd;
-  if (!valid) return "";
-  return `${String(yyyy).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
 }
 
 function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
@@ -158,7 +148,7 @@ function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
     const { serial, ambulance } = parseWorkOrderFormSearchFields(order.formData);
 
     return {
-      dateIso: parseDateToIso(data.date),
+      dateIso: parseWorkOrderDateToIso(data.date),
       serial,
       ambulance,
       notes: String(data.description ?? "").trim(),
@@ -267,7 +257,7 @@ function ReportDataTable({
         </div>
         {rows.map((row, i) => (
           <div key={row.id} className={cn("report-grid-row", i % 2 === 1 && "report-row-alt")}>
-            <div className="report-grid-cell">{new Date(row.date).toLocaleDateString()}</div>
+            <div className="report-grid-cell">{formatCalendarIsoDate(row.date)}</div>
             <div className="report-grid-cell">{row.technician}</div>
             <div className="report-grid-cell">{row.ambulance}</div>
             <div className="report-grid-cell whitespace-pre-wrap">{row.notes}</div>
@@ -348,7 +338,7 @@ function ReportDataTable({
                 cell
               )}
             >
-              {new Date(row.date).toLocaleDateString()}
+              {formatCalendarIsoDate(row.date)}
             </td>
             <td className={cn("border border-zinc-800 text-zinc-900 wrap-break-word", cell)}>
               {row.technician}
@@ -409,7 +399,7 @@ function ReportPrintList({
                 screen ? "border-b border-zinc-200 pb-2 text-base sm:text-lg" : "report-list-card-title"
               )}
             >
-              {new Date(row.date).toLocaleDateString()} · {row.type}
+              {formatCalendarIsoDate(row.date)} · {row.type}
             </p>
             <div
               className={cn(
@@ -630,7 +620,8 @@ function WorkOrderListRowWithOptionalFileDrop({
               clientLike ? "mt-0.5 text-sm text-zinc-600" : "text-xs text-zinc-500 sm:text-sm"
             )}
           >
-            {o.technicianName} · {new Date(o.createdAt).toLocaleDateString()}
+            {o.technicianName} ·{" "}
+            {formatWorkOrderDisplayDate(o.workDateIso ?? parsedFields.dateIso)}
           </p>
           {showOwnerStyleFilters && (
             <p className="mt-0.5 text-xs text-zinc-500">
@@ -1006,7 +997,7 @@ export function WorkOrdersClient({
     const parsed = extractSearchFields(o);
     return {
       id: o.id,
-      date: parsed.dateIso || new Date(o.createdAt).toISOString().slice(0, 10),
+      date: o.workDateIso ?? parsed.dateIso ?? "",
       serial: parsed.serial || "—",
       ambulance: parsed.ambulance || "—",
       notes: parsed.notes || "—",

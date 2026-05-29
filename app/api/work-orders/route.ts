@@ -1,4 +1,5 @@
 import { withAuthApi } from "@/lib/with-auth";
+import { parseWorkOrderFormDateTime, workOrderFormHasDate } from "@/lib/work-order-date";
 import { db } from "@/db";
 import { workOrder, user, workOrderFile } from "@/db/schema";
 import { eq, and, desc, inArray, type SQL } from "drizzle-orm";
@@ -97,10 +98,15 @@ export async function GET(request: Request) {
         .where(inArray(workOrderFile.workOrderId, orderIds))
     : [];
   const ordersWithFiles = new Set(fileRows.map((f) => f.workOrderId));
-  const ordersWithMeta = ordersWithNames.map((o) => ({
-    ...o,
-    hasFiles: ordersWithFiles.has(o.id),
-  }));
+  const ordersWithMeta = ordersWithNames.map((o) => {
+    const { dateIso, time } = parseWorkOrderFormDateTime(o.formData);
+    return {
+      ...o,
+      hasFiles: ordersWithFiles.has(o.id),
+      workDateIso: dateIso,
+      workTime: time,
+    };
+  });
 
   if (id) {
     const single = ordersWithMeta[0];
@@ -132,6 +138,9 @@ export async function POST(request: Request) {
   }
   if (type !== "cot" && type !== "lift") {
     return NextResponse.json({ error: "type must be cot or lift" }, { status: 400 });
+  }
+  if (!workOrderFormHasDate(formData)) {
+    return NextResponse.json({ error: "Date is required on the work order" }, { status: 400 });
   }
 
   let assignedTechnicianId = authUser.id;
@@ -220,6 +229,9 @@ export async function PATCH(request: Request) {
   };
 
   if (updateForm) {
+    if (!workOrderFormHasDate(body.formData)) {
+      return NextResponse.json({ error: "Date is required on the work order" }, { status: 400 });
+    }
     setPayload.formData = JSON.stringify(body.formData);
   }
 

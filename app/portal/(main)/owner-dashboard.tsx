@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { AlertTriangle, ChevronRight, FileStack } from "lucide-react";
 import type { Analytics } from "@/lib/analytics";
+import {
+  formatWorkOrderDisplayDateWithFormatter,
+  formatWorkOrderDisplayTime,
+} from "@/lib/work-order-date";
 
 function StatCard({
   href,
@@ -88,7 +92,7 @@ export function OwnerDashboard({ name, analytics }: { name: string; analytics: A
                   <div className="min-w-0">
                     <p className="font-medium text-zinc-900">
                       {o.type === "cot" ? "Cot Medik" : "Lift Medik"} ·{" "}
-                      {nyDate.format(new Date(o.createdAt))}
+                      {formatWorkOrderDisplayDateWithFormatter(o.workDateIso, nyDate)}
                     </p>
                     {!o.hasFiles && (
                       <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-800">
@@ -99,7 +103,7 @@ export function OwnerDashboard({ name, analytics }: { name: string; analytics: A
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className="text-sm text-zinc-500">
-                      {nyTime.format(new Date(o.createdAt))}
+                      {formatWorkOrderDisplayTime(o.workTime, o.createdAt, nyTime)}
                     </span>
                     <ChevronRight className="size-4 text-zinc-300" />
                   </div>
