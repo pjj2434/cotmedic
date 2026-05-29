@@ -354,13 +354,25 @@ export function CotFormView({ form }: { form: FormData }) {
                   <Field label="Model" value={g("stairChairModel")} />
                   <Field label="Serial No." value={g("stairChairSN")} />
                 </div>
-                <div className="row-grid cols-3" style={{ marginBottom: stairMb }}>
-                  {(() => {
-                    const parts = (form.stairChairParts as string[]) ?? [];
-                    const list = parts.length ? parts : [""];
-                    return list.map((v, i) => <Field key={i} label={`Part ${i + 1}`} value={v} />);
-                  })()}
+                <div className="row-grid cols-2" style={{ marginBottom: stairMb }}>
+                  <Field
+                    label="Part used"
+                    value={((form.stairChairParts as string[]) ?? [])[0] ?? ""}
+                  />
+                  <Field label="Parts needed" value={g("stairChairPartsNeeded")} />
                 </div>
+                {(() => {
+                  const parts = (form.stairChairParts as string[]) ?? [];
+                  const extras = parts.slice(1);
+                  if (!extras.some((v) => String(v ?? "").trim())) return null;
+                  return (
+                    <div className="row-grid cols-3" style={{ marginBottom: stairMb }}>
+                      {extras.map((v, i) => (
+                        <Field key={i + 1} label={`Part ${i + 2}`} value={v} />
+                      ))}
+                    </div>
+                  );
+                })()}
                 <div className="field-group" style={{ marginBottom: stairMb }}>
                   <Field label="Lock bar notes" value={g("lockBarIssue")} />
                 </div>

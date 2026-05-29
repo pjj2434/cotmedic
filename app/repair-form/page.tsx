@@ -201,6 +201,8 @@ interface FormState {
   stairChairModel: string;
   stairChairSN: string;
   stairChairParts: string[];
+  /** Stair chair only — separate from the main Parts section. */
+  stairChairPartsNeeded: string;
   lockBarIssue: string;
   adjusted: boolean | null;
   lockBarReplaced: boolean | null;
@@ -225,6 +227,7 @@ const initialFormState: FormState = {
   stairChairModel: "",
   stairChairSN: "",
   stairChairParts: [""],
+  stairChairPartsNeeded: "",
   lockBarIssue: "",
   adjusted: null,
   lockBarReplaced: null,
@@ -297,6 +300,10 @@ export default function CotMedikRepairFormPage() {
             Array.isArray(parsed.stairChairParts) && parsed.stairChairParts.length > 0
               ? parsed.stairChairParts
               : prev.stairChairParts,
+          stairChairPartsNeeded:
+            typeof parsed.stairChairPartsNeeded === "string"
+              ? parsed.stairChairPartsNeeded
+              : prev.stairChairPartsNeeded,
         }));
       })
       .catch((e) => {
@@ -634,24 +641,50 @@ export default function CotMedikRepairFormPage() {
                     />
                   </div>
                 </div>
-                <div className="mb-3.5 grid grid-cols-3 gap-3 *:min-w-0 max-md:grid-cols-2">
-                  {form.stairChairParts.map((v, i) => (
-                    <div className="flex flex-col gap-[5px]" key={i}>
-                      <label className="font-mono text-[9px] uppercase tracking-[2px] text-[#777]">
-                        Part {i + 1}
-                      </label>
-                      <input
-                        className={fieldInputClass}
-                        type="text"
-                        placeholder="e.g. wheel, latch"
-                        value={v}
-                        onChange={(e) =>
-                          updateStairChairParts(i, e.target.value)
-                        }
-                      />
-                    </div>
-                  ))}
+                <div className="mb-3.5 grid grid-cols-2 gap-3 *:min-w-0 max-md:grid-cols-1">
+                  <div className="flex flex-col gap-[5px]">
+                    <label className="font-mono text-[9px] uppercase tracking-[2px] text-[#777]">
+                      Part used
+                    </label>
+                    <input
+                      className={fieldInputClass}
+                      type="text"
+                      placeholder="e.g. wheel, latch"
+                      value={form.stairChairParts[0] ?? ""}
+                      onChange={(e) => updateStairChairParts(0, e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-[5px]">
+                    <label className="font-mono text-[9px] uppercase tracking-[2px] text-[#777]">
+                      Parts needed
+                    </label>
+                    <input
+                      className={fieldInputClass}
+                      type="text"
+                      placeholder="e.g. order wheel, latch"
+                      value={form.stairChairPartsNeeded}
+                      onChange={(e) => set("stairChairPartsNeeded", e.target.value)}
+                    />
+                  </div>
                 </div>
+                {form.stairChairParts.length > 1 && (
+                  <div className="mb-3.5 grid grid-cols-3 gap-3 *:min-w-0 max-md:grid-cols-2">
+                    {form.stairChairParts.slice(1).map((v, i) => (
+                      <div className="flex flex-col gap-[5px]" key={i + 1}>
+                        <label className="font-mono text-[9px] uppercase tracking-[2px] text-[#777]">
+                          Part {i + 2}
+                        </label>
+                        <input
+                          className={fieldInputClass}
+                          type="text"
+                          placeholder="e.g. wheel, latch"
+                          value={v}
+                          onChange={(e) => updateStairChairParts(i + 1, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="mb-3.5 flex flex-col gap-[5px]">
                   <label className="font-mono text-[9px] uppercase tracking-[2px] text-[#777]">
                     Lock bar notes

@@ -133,12 +133,20 @@ function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
             .filter(Boolean)
             .join(", ")
         : "";
+    const stairParts = Array.isArray(data.stairChairParts)
+      ? (data.stairChairParts as unknown[]).map((v) => String(v ?? "").trim())
+      : [];
     const detailPairs: string[] = [
       `Model: ${String(data.model ?? "").trim()}`,
       `Make: ${String(data.make ?? "").trim()}`,
       `Bus: ${String(data.bus ?? "").trim()}`,
       `Stair Chair Model: ${String(data.stairChairModel ?? "").trim()}`,
       `Stair Chair SN: ${String(data.stairChairSN ?? "").trim()}`,
+      stairParts[0] ? `Stair Chair Part used: ${stairParts[0]}` : "",
+      String(data.stairChairPartsNeeded ?? "").trim()
+        ? `Stair Chair Parts needed: ${String(data.stairChairPartsNeeded).trim()}`
+        : "",
+      ...stairParts.slice(1).map((v, i) => (v ? `Stair Chair Part ${i + 2}: ${v}` : "")),
       `Lock Notes: ${String(data.lockBarIssue ?? "").trim()}`,
     ].filter((x) => !x.endsWith(": "));
 
