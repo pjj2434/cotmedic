@@ -40,7 +40,6 @@ export async function GET(request: Request) {
 
   const conditions: SQL[] = [];
   if (id) conditions.push(eq(workOrder.id, id));
-  if (role === "technician") conditions.push(eq(workOrder.technicianId, authUser.id));
   if (role === "client" || role === "employee" || role === "administrator") {
     const scope = workOrderCustomerScope(role, authUser);
     const scopeResult = appendWorkOrderCustomerScopeConditions(scope, conditions);

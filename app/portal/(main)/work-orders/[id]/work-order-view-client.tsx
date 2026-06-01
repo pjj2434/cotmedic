@@ -62,7 +62,15 @@ type WorkOrderFile = {
 
 type Customer = { id: string; name: string; customerType?: string };
 
-export function WorkOrderViewClient({ id, role }: { id: string; role: string }) {
+export function WorkOrderViewClient({
+  id,
+  role,
+  userId,
+}: {
+  id: string;
+  role: string;
+  userId: string;
+}) {
   const router = useRouter();
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
@@ -119,7 +127,10 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
     };
   }, [workOrder?.id, workOrder?.type, role]);
 
+  const canViewWorkOrderFiles = role === "owner";
+
   const fetchFiles = useCallback(async () => {
+    if (!canViewWorkOrderFiles) return;
     try {
       const res = await fetch(`/api/work-order-files?workOrderId=${encodeURIComponent(id)}`);
       const data = await res.json().catch(() => ({ files: [] }));
@@ -128,7 +139,7 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
     } catch {
       setFiles([]);
     }
-  }, [id]);
+  }, [canViewWorkOrderFiles, id]);
 
   useEffect(() => {
     fetchFiles();
@@ -196,10 +207,11 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
 
-  const canUpload = role === "owner" || role === "technician";
+  const isOwnWorkOrder = workOrder?.technicianId === userId;
+  const canUpload = role === "owner";
   const canDelete = role === "owner";
-  const canEdit = role === "owner" || role === "technician";
-  const canEditCustomer = role === "owner" || role === "technician";
+  const canEdit = role === "owner" || (role === "technician" && isOwnWorkOrder);
+  const canEditCustomer = role === "owner" || (role === "technician" && isOwnWorkOrder);
   const canDeleteWorkOrder = role === "owner";
   const customerDirty =
     !!selectedCustomer && !!workOrder && selectedCustomer.id !== workOrder.customerId;
@@ -373,71 +385,75 @@ export function WorkOrderViewClient({ id, role }: { id: string; role: string }) 
           </DialogContent>
         </Dialog>
       )}
-      <div className="mx-2 mb-4 rounded-md border border-zinc-200 bg-white shadow-sm sm:mx-3">
-        <div className="border-b border-zinc-200 px-3 py-2">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-900">Work order files ({files.length})</h2>
-          <p className="mt-1 text-xs text-zinc-500">
-            Attachments specific to this work order.
-          </p>
-        </div>
-        {canUpload && (
-          <div className="border-b border-zinc-200 p-3">
-            <UploadDropzone
-              endpoint="workOrderFileUploader"
-              input={{ workOrderId: id }}
-              config={{ mode: "auto" }}
-              onClientUploadComplete={() => {
-                fetchFiles();
-                toast.success("Files uploaded");
-              }}
-              onUploadError={(err) => {
-                toast.error(err.message);
-              }}
-              className="ut-button:bg-red-600 ut-button:ut-readying:bg-red-500 ut-button:ut-uploading:bg-red-600"
-            />
+      {canViewWorkOrderFiles && (
+        <div className="mx-2 mb-4 rounded-md border border-zinc-200 bg-white shadow-sm sm:mx-3">
+          <div className="border-b border-zinc-200 px-3 py-2">
+            <h2 className="text-sm font-semibold tracking-tight text-zinc-900">
+              Work order files ({files.length})
+            </h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Attachments specific to this work order.
+            </p>
           </div>
-        )}
-        {files.length === 0 ? (
-          <div className="p-4 text-center text-sm text-zinc-500">No files yet.</div>
-        ) : (
-          <div className="divide-y divide-zinc-100">
-            {files.map((f) => (
-              <div key={f.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                <a
-                  href={f.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex min-w-0 flex-1 items-center gap-3 text-zinc-900 hover:text-red-600"
-                >
-                  {isImage(f.mimeType) ? (
-                    <Image className="size-8 shrink-0 text-zinc-400" />
-                  ) : isPdf(f.mimeType) ? (
-                    <FileText className="size-8 shrink-0 text-zinc-400" />
-                  ) : (
-                    <FileText className="size-8 shrink-0 text-zinc-400" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{f.name}</p>
-                    <p className="text-xs text-zinc-500">
-                      {formatSize(f.size)} · {new Date(f.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </a>
-                {canDelete && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
-                    onClick={() => handleDeleteFile(f.id)}
+          {canUpload && (
+            <div className="border-b border-zinc-200 p-3">
+              <UploadDropzone
+                endpoint="workOrderFileUploader"
+                input={{ workOrderId: id }}
+                config={{ mode: "auto" }}
+                onClientUploadComplete={() => {
+                  fetchFiles();
+                  toast.success("Files uploaded");
+                }}
+                onUploadError={(err) => {
+                  toast.error(err.message);
+                }}
+                className="ut-button:bg-red-600 ut-button:ut-readying:bg-red-500 ut-button:ut-uploading:bg-red-600"
+              />
+            </div>
+          )}
+          {files.length === 0 ? (
+            <div className="p-4 text-center text-sm text-zinc-500">No files yet.</div>
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {files.map((f) => (
+                <div key={f.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <a
+                    href={f.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-w-0 flex-1 items-center gap-3 text-zinc-900 hover:text-red-600"
                   >
-                    <Trash2 className="size-4" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                    {isImage(f.mimeType) ? (
+                      <Image className="size-8 shrink-0 text-zinc-400" />
+                    ) : isPdf(f.mimeType) ? (
+                      <FileText className="size-8 shrink-0 text-zinc-400" />
+                    ) : (
+                      <FileText className="size-8 shrink-0 text-zinc-400" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{f.name}</p>
+                      <p className="text-xs text-zinc-500">
+                        {formatSize(f.size)} · {new Date(f.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </a>
+                  {canDelete && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                      onClick={() => handleDeleteFile(f.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <AlertDialog open={deleteWorkOrderOpen} onOpenChange={setDeleteWorkOrderOpen}>
         <AlertDialogContent>

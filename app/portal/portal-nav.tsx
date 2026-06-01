@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { TechnicianWorkOrderSearch } from "@/components/technician-work-order-search";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import { isLocationPortalRole } from "@/lib/portal-roles";
@@ -56,6 +57,7 @@ export function PortalNav({
               <img src="/liftlogo.jpeg" alt="Lift Medik" className="h-8 w-auto rounded-sm sm:h-9" />
             </div>
             <div className="flex min-w-0 items-center justify-end">
+              {role === "technician" && <TechnicianWorkOrderSearch />}
               <button
                 type="button"
                 onClick={handleSignOut}

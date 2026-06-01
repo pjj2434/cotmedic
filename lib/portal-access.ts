@@ -61,8 +61,7 @@ export function canViewWorkOrderForPortalUser(
   user: SessionUserLike,
   order: { customerId: string; technicianId: string }
 ): boolean {
-  if (role === "owner") return true;
-  if (role === "technician") return order.technicianId === user.id;
+  if (role === "owner" || role === "technician") return true;
   const scope = workOrderCustomerScope(role, user);
   if (scope.kind !== "customers") return false;
   return scope.ids.includes(order.customerId);

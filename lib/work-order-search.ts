@@ -1,6 +1,7 @@
 import { like, or, sql, type SQL } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { workOrder } from "@/db/schema";
+import { formatWorkOrderDisplayDate, parseWorkOrderDateToIso } from "@/lib/work-order-date";
 
 export const WORK_ORDER_SEARCH_QUERY_PARAM = "q";
 
@@ -34,7 +35,7 @@ function jsonFormFieldLike(jsonPath: string, patternLower: string): SQL {
   );
 }
 
-/** Match work orders by customer, technician, unit fields, model, make, or notes. */
+/** SQL match on work-order form fields plus location and technician names. */
 export function workOrderPortalSearchConditions(
   pattern: string,
   customerName: SQLiteColumn,
@@ -49,8 +50,58 @@ export function workOrderPortalSearchConditions(
     jsonFormFieldLike("$.bus", patternLower),
     jsonFormFieldLike("$.model", patternLower),
     jsonFormFieldLike("$.make", patternLower),
-    jsonFormFieldLike("$.description", patternLower)
+    jsonFormFieldLike("$.description", patternLower),
+    jsonFormFieldLike("$.companyName", patternLower),
+    jsonFormFieldLike("$.techName", patternLower),
+    jsonFormFieldLike("$.stairChairModel", patternLower),
+    jsonFormFieldLike("$.stairChairSN", patternLower),
+    jsonFormFieldLike("$.stairChairPartsNeeded", patternLower),
+    jsonFormFieldLike("$.lockBarIssue", patternLower),
+    jsonFormFieldLike("$.date", patternLower),
+    jsonFormFieldLike("$.time", patternLower),
+    like(sql`lower(coalesce(${workOrder.formData}, ''))`, patternLower)
   )!;
+}
+
+function listFieldHaystack(value: unknown): string {
+  if (!Array.isArray(value)) return "";
+  return value
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Searchable text from stored repair form JSON (all ticket fields). */
+export function workOrderFormSearchHaystack(formData: string): string {
+  try {
+    const data = JSON.parse(formData) as Record<string, unknown>;
+    const parts = [
+      data.sn,
+      data.ambulance,
+      data.bus,
+      data.model,
+      data.make,
+      data.description,
+      data.companyName,
+      data.techName,
+      data.date,
+      data.time,
+      data.stairChairModel,
+      data.stairChairSN,
+      data.stairChairPartsNeeded,
+      data.lockBarIssue,
+      listFieldHaystack(data.partsUsed),
+      listFieldHaystack(data.partsNeeded),
+      listFieldHaystack(data.stairChairParts),
+    ];
+    return parts
+      .map((v) => String(v ?? "").trim())
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 /** Client-side contains check (work orders list `?q=` filter). */
@@ -68,26 +119,8 @@ export function workOrderMatchesSearchQuery(
   if (input.customerName.toLowerCase().includes(needle)) return true;
   if (input.technicianName.toLowerCase().includes(needle)) return true;
 
-  const { serial, ambulance, model, make } = parseWorkOrderFormSearchFields(input.formData);
-  if (serial.toLowerCase().includes(needle)) return true;
-  if (ambulance.toLowerCase().includes(needle)) return true;
-  if (model.toLowerCase().includes(needle)) return true;
-  if (make.toLowerCase().includes(needle)) return true;
-
-  try {
-    const data = JSON.parse(input.formData) as Record<string, unknown>;
-    const extra = [
-      data.description,
-      data.stairChairModel,
-      data.stairChairSN,
-      data.lockBarIssue,
-    ]
-      .map((v) => String(v ?? "").trim().toLowerCase())
-      .filter(Boolean);
-    if (extra.some((s) => s.includes(needle))) return true;
-  } catch {
-    /* ignore */
-  }
+  const haystack = workOrderFormSearchHaystack(input.formData);
+  if (haystack.includes(needle)) return true;
 
   return false;
 }
@@ -99,11 +132,13 @@ export function describeWorkOrderSearchMatch(
     customerName: string;
     technicianName: string;
     formData: string;
-    createdAt: string;
+    workDateIso?: string;
   }
 ): string {
   const needle = q.trim().toLowerCase();
-  if (!needle) return new Date(input.createdAt).toLocaleDateString();
+  if (!needle) {
+    return formatWorkOrderDisplayDate(input.workDateIso ?? "");
+  }
 
   const { serial, ambulance, model, make } = parseWorkOrderFormSearchFields(input.formData);
   if (model.toLowerCase().includes(needle)) return `Model ${model}`;
@@ -112,5 +147,25 @@ export function describeWorkOrderSearchMatch(
   if (ambulance.toLowerCase().includes(needle)) return `Unit ${ambulance}`;
   if (input.technicianName.toLowerCase().includes(needle)) return input.technicianName;
   if (input.customerName.toLowerCase().includes(needle)) return input.customerName;
-  return new Date(input.createdAt).toLocaleDateString();
+
+  try {
+    const data = JSON.parse(input.formData) as Record<string, unknown>;
+    if (String(data.description ?? "").toLowerCase().includes(needle)) return "Matched in notes";
+    const partsHay = `${listFieldHaystack(data.partsUsed)} ${listFieldHaystack(data.partsNeeded)}`.toLowerCase();
+    if (partsHay.includes(needle)) return "Matched in parts";
+  } catch {
+    /* ignore */
+  }
+
+  let dateIso = input.workDateIso ?? "";
+  if (!dateIso) {
+    try {
+      dateIso = parseWorkOrderDateToIso(
+        (JSON.parse(input.formData) as Record<string, unknown>).date
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+  return formatWorkOrderDisplayDate(dateIso);
 }

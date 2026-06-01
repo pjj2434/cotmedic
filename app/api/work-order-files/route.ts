@@ -13,13 +13,6 @@ import {
 
 async function getAccessibleWorkOrderIds(role: string, user: SessionUserLike) {
   if (role === "owner") return null;
-  if (role === "technician") {
-    const rows = await db
-      .select({ id: workOrder.id })
-      .from(workOrder)
-      .where(eq(workOrder.technicianId, user.id));
-    return rows.map((r) => r.id);
-  }
   const scope = workOrderCustomerScope(role, user);
   const conditions: SQL[] = [];
   const r = appendWorkOrderCustomerScopeConditions(scope, conditions);
@@ -34,7 +27,7 @@ async function getAccessibleWorkOrderIds(role: string, user: SessionUserLike) {
 /** GET - List work-order files by workOrderId, or all visible to current user. */
 export async function GET(request: Request) {
   const authResult = await withAuthApi({
-    roles: ["owner", "technician", "client", "employee", "administrator"],
+    roles: ["owner", "client", "employee", "administrator"],
   });
   if (authResult instanceof NextResponse) return authResult;
   const { user: authUser, role } = authResult;

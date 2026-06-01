@@ -53,8 +53,8 @@ export const ourFileRouter = {
       });
       if (!session) throw new UploadThingError("Unauthorized");
       const role = (session.user.role ?? "client") as string;
-      if (role !== "owner" && role !== "technician") {
-        throw new UploadThingError("Only owners and technicians can upload work order files");
+      if (role !== "owner") {
+        throw new UploadThingError("Only owners can upload work order files");
       }
 
       const rows = await db
@@ -64,9 +64,6 @@ export const ourFileRouter = {
         .limit(1);
       const order = rows[0];
       if (!order) throw new UploadThingError("Work order not found");
-      if (role === "technician" && order.technicianId !== session.user.id) {
-        throw new UploadThingError("Forbidden");
-      }
 
       return { userId: session.user.id, workOrderId: order.id, customerId: order.customerId };
     })

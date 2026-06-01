@@ -10,6 +10,7 @@ import {
   describeWorkOrderSearchMatch,
   workOrderPortalSearchConditions,
 } from "@/lib/work-order-search";
+import { parseWorkOrderFormDateTime } from "@/lib/work-order-date";
 
 const LIMIT = 6;
 
@@ -229,18 +230,21 @@ export async function GET(request: Request) {
     .orderBy(desc(workOrder.createdAt))
     .limit(LIMIT);
 
-  const workOrderItems = matchedWorkOrders.map((o) => ({
-    id: `work_order:${o.id}`,
-    type: "work_order" as const,
-    title: `${o.customerName} · ${o.type === "cot" ? "Cot Medik" : "Lift Medik"}`,
-    subtitle: describeWorkOrderSearchMatch(q, {
-      customerName: o.customerName,
-      technicianName: o.technicianName,
-      formData: o.formData,
-      createdAt: o.createdAt,
-    }),
-    href: `/portal/work-orders/${o.id}`,
-  }));
+  const workOrderItems = matchedWorkOrders.map((o) => {
+    const { dateIso } = parseWorkOrderFormDateTime(o.formData);
+    return {
+      id: `work_order:${o.id}`,
+      type: "work_order" as const,
+      title: `${o.customerName} · ${o.type === "cot" ? "Cot Medik" : "Lift Medik"}`,
+      subtitle: describeWorkOrderSearchMatch(q, {
+        customerName: o.customerName,
+        technicianName: o.technicianName,
+        formData: o.formData,
+        workDateIso: dateIso,
+      }),
+      href: `/portal/work-orders/${o.id}`,
+    };
+  });
 
   if (workOrderItems.length > 0) {
     const viewAllItem =

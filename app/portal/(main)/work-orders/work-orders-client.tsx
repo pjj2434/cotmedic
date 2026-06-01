@@ -25,6 +25,7 @@ import {
   FileText,
   ChevronRight,
   Printer,
+  Search,
   AlertTriangle,
   LayoutList,
   Table2,
@@ -689,6 +690,7 @@ function WorkOrderListRowWithOptionalFileDrop({
 
 const CLIENT_WORK_ORDERS_PAGE_SIZE = 20;
 const OWNER_WORK_ORDERS_PAGE_SIZE = 20;
+const TECHNICIAN_WORK_ORDERS_PAGE_SIZE = 25;
 
 export function WorkOrdersClient({
   role,
@@ -705,8 +707,7 @@ export function WorkOrdersClient({
 
   const clientLike = isLocationPortalRole(role);
   const showOwnerStyleFilters = role === "owner" || role === "administrator";
-  const canAttachFilesOnList =
-    (role === "owner" || role === "technician") && !clientLike;
+  const canAttachFilesOnList = role === "owner" && !clientLike;
   const shouldPersistListFilters = role !== "technician";
   const listFiltersStorageKey = `${WORK_ORDERS_LIST_FILTERS_STORAGE_PREFIX}${userId}`;
 
@@ -738,6 +739,7 @@ export function WorkOrdersClient({
   const [printRunId, setPrintRunId] = useState(0);
   const [clientListLimit, setClientListLimit] = useState(CLIENT_WORK_ORDERS_PAGE_SIZE);
   const [ownerListLimit, setOwnerListLimit] = useState(OWNER_WORK_ORDERS_PAGE_SIZE);
+  const [technicianListLimit, setTechnicianListLimit] = useState(TECHNICIAN_WORK_ORDERS_PAGE_SIZE);
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
   const [assistanceDialogOpen, setAssistanceDialogOpen] = useState(false);
   const [copiedContactEmail, setCopiedContactEmail] = useState(false);
@@ -780,7 +782,7 @@ export function WorkOrdersClient({
   }, [urlSearchQuery, listFiltersHydrated]);
 
   useEffect(() => {
-    if (!listFiltersHydrated || role === "technician") return;
+    if (!listFiltersHydrated) return;
     const t = window.setTimeout(() => {
       const next = filterQuery.trim();
       const current = searchParams.get(WORK_ORDER_SEARCH_QUERY_PARAM)?.trim() ?? "";
@@ -977,6 +979,7 @@ export function WorkOrdersClient({
   });
 
   const ownerLike = role === "owner" || role === "administrator";
+  const technicianRole = role === "technician";
   const searchQueryActive = filterQuery.trim().length > 0;
   const visibleOrders = clientLike
     ? searchQueryActive
@@ -986,12 +989,18 @@ export function WorkOrdersClient({
       ? searchQueryActive
         ? filteredOrders
         : filteredOrders.slice(0, ownerListLimit)
-      : filteredOrders;
+      : technicianRole
+        ? searchQueryActive
+          ? filteredOrders
+          : filteredOrders.slice(0, technicianListLimit)
+        : filteredOrders;
   const hasMore = searchQueryActive
     ? false
     : clientLike
       ? filteredOrders.length > clientListLimit
-      : ownerLike && filteredOrders.length > ownerListLimit;
+      : ownerLike
+        ? filteredOrders.length > ownerListLimit
+        : technicianRole && filteredOrders.length > technicianListLimit;
 
   const reportRows: WorkOrderReportRow[] = filteredOrders.map((o) => {
     const parsed = extractSearchFields(o);
@@ -1085,7 +1094,7 @@ export function WorkOrdersClient({
               ? "View and filter all repair reports."
               : role === "administrator"
                 ? "View and filter work orders for your assigned locations."
-                : "Start a new repair or view your completed work."}
+                : "Start a new repair, search past jobs, and review work order history."}
           </p>
         </div>
       )}
@@ -1218,14 +1227,40 @@ export function WorkOrdersClient({
                   : "font-medium text-zinc-900"
               }
             >
-              {role === "owner" ? "All work orders" : "Your work orders"}
+              {role === "owner"
+                ? "All work orders"
+                : technicianRole
+                  ? "Work order history"
+                  : "Your work orders"}
             </h2>
             {canAttachFilesOnList && (
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
                 Drag a PDF or image onto a row to attach it without opening the work order.
               </p>
             )}
+            {technicianRole && (
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                Search by serial, unit, location, notes, or parts to see what other techs did on site.
+              </p>
+            )}
           </div>
+          {technicianRole && (
+            <div className="w-full min-w-0 sm:max-w-md">
+              <Label htmlFor="technician-work-order-search" className="sr-only">
+                Search work orders
+              </Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
+                <Input
+                  id="technician-work-order-search"
+                  placeholder="Search serial, unit, location, notes, parts…"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  className="h-10 border-zinc-200 bg-zinc-50 pl-9 text-sm shadow-sm"
+                />
+              </div>
+            </div>
+          )}
           {role !== "technician" && (
             <div className="grid w-full grid-cols-1 items-stretch gap-x-3 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
               {showOwnerStyleFilters && (
@@ -1461,6 +1496,12 @@ export function WorkOrdersClient({
                       );
                       return;
                     }
+                    if (technicianRole) {
+                      setTechnicianListLimit((n) =>
+                        Math.min(n + TECHNICIAN_WORK_ORDERS_PAGE_SIZE, filteredOrders.length)
+                      );
+                      return;
+                    }
                     setOwnerListLimit((n) =>
                       Math.min(n + OWNER_WORK_ORDERS_PAGE_SIZE, filteredOrders.length)
                     );
@@ -1469,7 +1510,9 @@ export function WorkOrdersClient({
                   Show more (
                   {clientLike
                     ? filteredOrders.length - clientListLimit
-                    : filteredOrders.length - ownerListLimit}{" "}
+                    : technicianRole
+                      ? filteredOrders.length - technicianListLimit
+                      : filteredOrders.length - ownerListLimit}{" "}
                   remaining)
                 </Button>
               </div>
