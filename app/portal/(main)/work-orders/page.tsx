@@ -8,11 +8,7 @@ export default async function WorkOrdersPage() {
   });
 
   return (
-    <Suspense
-      fallback={
-        <div className="py-12 text-center text-sm text-zinc-500">Loading work orders…</div>
-      }
-    >
+    <Suspense fallback={null}>
       <WorkOrdersClient role={role} userName={user.name} userId={user.id} />
     </Suspense>
   );

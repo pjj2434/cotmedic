@@ -177,30 +177,6 @@ function CustomersListSkeleton({ rowCount = CUSTOMERS_LIST_SKELETON_ROWS }: { ro
   );
 }
 
-export function CustomersPageSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-56 rounded bg-zinc-200/80" />
-          <Skeleton className="h-4 w-full max-w-xl rounded bg-zinc-200/60" />
-          <Skeleton className="h-4 w-[min(100%,28rem)] rounded bg-zinc-200/50" />
-        </div>
-        <Skeleton className="h-10 w-36 rounded-md bg-zinc-200/80" />
-      </div>
-      <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Skeleton className="h-10 flex-1 rounded-md bg-zinc-200/70" />
-          <Skeleton className="h-10 w-full rounded-md bg-zinc-200/70 sm:w-[190px]" />
-        </div>
-      </div>
-      <div className="rounded-xl border border-zinc-200 bg-white">
-        <CustomersListSkeleton />
-      </div>
-    </div>
-  );
-}
-
 export function CustomersClient() {
   const router = useRouter();
   const searchParams = useSearchParams();

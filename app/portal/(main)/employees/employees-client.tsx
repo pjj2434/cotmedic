@@ -104,27 +104,6 @@ function EmployeesListSkeleton({ rowCount = EMPLOYEES_LIST_SKELETON_ROWS }: { ro
   );
 }
 
-export function EmployeesPageSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-2">
-          <Skeleton className="h-8 w-36 rounded bg-zinc-200/80" />
-          <Skeleton className="h-4 w-72 rounded bg-zinc-200/60" />
-        </div>
-        <Skeleton className="h-10 w-40 rounded-md bg-zinc-200/80" />
-      </div>
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-10 flex-1 rounded-md bg-zinc-200/70" />
-        <Skeleton className="h-10 w-[180px] rounded-md bg-zinc-200/70" />
-      </div>
-      <div className="rounded-xl border border-zinc-200 bg-white">
-        <EmployeesListSkeleton />
-      </div>
-    </div>
-  );
-}
-
 export function EmployeesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
