@@ -3,6 +3,7 @@ import { parseWorkOrderFormDateTime, workOrderFormHasDate } from "@/lib/work-ord
 import { db } from "@/db";
 import { workOrder, user, workOrderFile } from "@/db/schema";
 import { eq, and, desc, inArray, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { NextResponse } from "next/server";
 import { utapi } from "@/lib/uploadthing-server";
 import {
@@ -53,41 +54,31 @@ export async function GET(request: Request) {
     conditions.push(eq(workOrder.customerId, customerId));
   if (technicianId && role === "owner") conditions.push(eq(workOrder.technicianId, technicianId));
 
-  const orders = await db
-    .select()
-    .from(workOrder)
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(workOrder.createdAt));
+  const technicianUser = alias(user, "workOrderTechnician");
+  const customerUser = alias(user, "workOrderCustomer");
+  const submitterUser = alias(user, "workOrderSubmitter");
+  const whereClause = conditions.length ? and(...conditions) : undefined;
 
-  const techCustomerPairs = await Promise.all(
-    orders.map(async (o) => {
-      const [tech, cust] = await Promise.all([
-        db.select({ name: user.name }).from(user).where(eq(user.id, o.technicianId)).limit(1),
-        db.select({ name: user.name }).from(user).where(eq(user.id, o.customerId)).limit(1),
-      ]);
-      return {
-        ...o,
-        technicianName: tech[0]?.name ?? "—",
-        customerName: cust[0]?.name ?? "—",
-      };
+  const ordersWithNames = await db
+    .select({
+      id: workOrder.id,
+      technicianId: workOrder.technicianId,
+      customerId: workOrder.customerId,
+      type: workOrder.type,
+      formData: workOrder.formData,
+      submittedById: workOrder.submittedById,
+      createdAt: workOrder.createdAt,
+      updatedAt: workOrder.updatedAt,
+      technicianName: technicianUser.name,
+      customerName: customerUser.name,
+      submittedByName: submitterUser.name,
     })
-  );
-
-  const submitterIds = [
-    ...new Set(
-      techCustomerPairs.map((o) => o.submittedById).filter((id): id is string => !!id?.trim())
-    ),
-  ];
-  const submitterRows =
-    submitterIds.length > 0
-      ? await db.select({ id: user.id, name: user.name }).from(user).where(inArray(user.id, submitterIds))
-      : [];
-  const submitterNames = new Map(submitterRows.map((s) => [s.id, s.name]));
-
-  const ordersWithNames = techCustomerPairs.map((o) => ({
-    ...o,
-    submittedByName: o.submittedById ? (submitterNames.get(o.submittedById) ?? "—") : null,
-  }));
+    .from(workOrder)
+    .innerJoin(technicianUser, eq(workOrder.technicianId, technicianUser.id))
+    .innerJoin(customerUser, eq(workOrder.customerId, customerUser.id))
+    .leftJoin(submitterUser, eq(workOrder.submittedById, submitterUser.id))
+    .where(whereClause)
+    .orderBy(desc(workOrder.createdAt));
 
   const orderIds = ordersWithNames.map((o) => o.id);
   const fileRows = orderIds.length
@@ -101,6 +92,9 @@ export async function GET(request: Request) {
     const { dateIso, time } = parseWorkOrderFormDateTime(o.formData);
     return {
       ...o,
+      technicianName: o.technicianName ?? "—",
+      customerName: o.customerName ?? "—",
+      submittedByName: o.submittedById ? (o.submittedByName ?? "—") : null,
       hasFiles: ordersWithFiles.has(o.id),
       workDateIso: dateIso,
       workTime: time,
