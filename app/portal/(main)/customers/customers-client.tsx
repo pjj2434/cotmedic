@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -146,6 +147,60 @@ function isPendingLocationLogin(u: User): boolean {
   return roleToAccountKind(u.role) === "location" && userId.startsWith("pending_");
 }
 
+const CUSTOMERS_LIST_SKELETON_DELAY_MS = 200;
+const CUSTOMERS_LIST_SKELETON_ROWS = 6;
+
+function CustomersListSkeleton({ rowCount = CUSTOMERS_LIST_SKELETON_ROWS }: { rowCount?: number }) {
+  return (
+    <div className="divide-y divide-zinc-100">
+      {Array.from({ length: rowCount }, (_, i) => (
+        <div
+          key={i}
+          className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Skeleton className="h-4 w-40 rounded bg-zinc-200/80" />
+              <Skeleton className="h-5 w-20 rounded bg-zinc-200/70" />
+            </div>
+            <Skeleton className="h-3.5 w-28 rounded bg-zinc-200/60" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-16 rounded-md bg-zinc-200/70" />
+            <Skeleton className="h-8 w-28 rounded-md bg-zinc-200/70" />
+            <Skeleton className="h-8 w-16 rounded-md bg-zinc-200/70" />
+            <Skeleton className="h-8 w-20 rounded-md bg-zinc-200/70" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function CustomersPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-56 rounded bg-zinc-200/80" />
+          <Skeleton className="h-4 w-full max-w-xl rounded bg-zinc-200/60" />
+          <Skeleton className="h-4 w-[min(100%,28rem)] rounded bg-zinc-200/50" />
+        </div>
+        <Skeleton className="h-10 w-36 rounded-md bg-zinc-200/80" />
+      </div>
+      <div className="rounded-xl border border-zinc-200 bg-white p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Skeleton className="h-10 flex-1 rounded-md bg-zinc-200/70" />
+          <Skeleton className="h-10 w-full rounded-md bg-zinc-200/70 sm:w-[190px]" />
+        </div>
+      </div>
+      <div className="rounded-xl border border-zinc-200 bg-white">
+        <CustomersListSkeleton />
+      </div>
+    </div>
+  );
+}
+
 export function CustomersClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -156,7 +211,8 @@ export function CustomersClient() {
   const HIGHLIGHT_DURATION_MS = 3000;
 
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoadPending, setInitialLoadPending] = useState(true);
+  const [showListSkeleton, setShowListSkeleton] = useState(false);
   const [search, setSearch] = useState("");
   const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -248,7 +304,6 @@ export function CustomersClient() {
   }, [createOpen, editOpen, fetchLocations]);
 
   const fetchUsers = useCallback(async () => {
-    setLoading(true);
     const searchOpts = search.trim()
       ? {
           searchValue: search.trim(),
@@ -302,9 +357,21 @@ export function CustomersClient() {
       setUsers([]);
       setDeliveryByEmail({});
     } finally {
-      setLoading(false);
+      setInitialLoadPending(false);
     }
   }, [search]);
+
+  useEffect(() => {
+    if (!initialLoadPending) {
+      setShowListSkeleton(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setShowListSkeleton(true),
+      CUSTOMERS_LIST_SKELETON_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [initialLoadPending]);
 
   function deliveryChip(statusRaw: string | undefined) {
     const status = (statusRaw ?? "").toLowerCase();
@@ -337,7 +404,7 @@ export function CustomersClient() {
   });
 
   useEffect(() => {
-    if (!highlightId || loading) return;
+    if (!highlightId || initialLoadPending) return;
     if (processedHighlightRef.current === highlightId) return;
 
     const user = users.find((u) => u.id === highlightId);
@@ -363,7 +430,7 @@ export function CustomersClient() {
       window.clearTimeout(scrollT);
       window.clearTimeout(clearT);
     };
-  }, [highlightId, loading, users, router]);
+  }, [highlightId, initialLoadPending, users, router]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchUsers(), 300);
@@ -869,9 +936,9 @@ export function CustomersClient() {
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white">
-        {loading ? (
-          <div className="p-8 text-center text-zinc-500">Loading…</div>
-        ) : filteredUsers.length === 0 ? (
+        {initialLoadPending && showListSkeleton ? (
+          <CustomersListSkeleton />
+        ) : initialLoadPending ? null : filteredUsers.length === 0 ? (
           <div className="p-8 text-center text-zinc-500">No accounts found.</div>
         ) : (
           <div className="divide-y divide-zinc-100">

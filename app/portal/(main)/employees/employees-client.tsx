@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -77,6 +78,53 @@ type User = {
 };
 type DeliveryRow = { email: string; status: string; updatedAt: string };
 
+const EMPLOYEES_LIST_SKELETON_DELAY_MS = 200;
+const EMPLOYEES_LIST_SKELETON_ROWS = 6;
+
+function EmployeesListSkeleton({ rowCount = EMPLOYEES_LIST_SKELETON_ROWS }: { rowCount?: number }) {
+  return (
+    <div className="divide-y divide-zinc-100">
+      {Array.from({ length: rowCount }, (_, i) => (
+        <div
+          key={i}
+          className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-36 rounded bg-zinc-200/80" />
+            <Skeleton className="h-3.5 w-28 rounded bg-zinc-200/60" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-32 rounded-md bg-zinc-200/70" />
+            <Skeleton className="h-8 w-16 rounded-md bg-zinc-200/70" />
+            <Skeleton className="h-8 w-20 rounded-md bg-zinc-200/70" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function EmployeesPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-36 rounded bg-zinc-200/80" />
+          <Skeleton className="h-4 w-72 rounded bg-zinc-200/60" />
+        </div>
+        <Skeleton className="h-10 w-40 rounded-md bg-zinc-200/80" />
+      </div>
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-10 flex-1 rounded-md bg-zinc-200/70" />
+        <Skeleton className="h-10 w-[180px] rounded-md bg-zinc-200/70" />
+      </div>
+      <div className="rounded-xl border border-zinc-200 bg-white">
+        <EmployeesListSkeleton />
+      </div>
+    </div>
+  );
+}
+
 export function EmployeesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -87,7 +135,8 @@ export function EmployeesClient() {
   const HIGHLIGHT_DURATION_MS = 3000;
 
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoadPending, setInitialLoadPending] = useState(true);
+  const [showListSkeleton, setShowListSkeleton] = useState(false);
   const [search, setSearch] = useState("");
   const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -155,7 +204,6 @@ export function EmployeesClient() {
   }
 
   const fetchUsers = useCallback(async () => {
-    setLoading(true);
     try {
       const { data: res } = await authClient.admin.listUsers({
         query: {
@@ -195,9 +243,21 @@ export function EmployeesClient() {
       setUsers([]);
       setDeliveryByEmail({});
     } finally {
-      setLoading(false);
+      setInitialLoadPending(false);
     }
   }, [search]);
+
+  useEffect(() => {
+    if (!initialLoadPending) {
+      setShowListSkeleton(false);
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setShowListSkeleton(true),
+      EMPLOYEES_LIST_SKELETON_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [initialLoadPending]);
 
   function deliveryChip(statusRaw: string | undefined) {
     const status = (statusRaw ?? "").toLowerCase();
@@ -230,7 +290,7 @@ export function EmployeesClient() {
   });
 
   useEffect(() => {
-    if (!highlightId || loading) return;
+    if (!highlightId || initialLoadPending) return;
     if (processedHighlightRef.current === highlightId) return;
 
     const user = users.find((u) => u.id === highlightId);
@@ -256,7 +316,7 @@ export function EmployeesClient() {
       window.clearTimeout(scrollT);
       window.clearTimeout(clearT);
     };
-  }, [highlightId, loading, users, router]);
+  }, [highlightId, initialLoadPending, users, router]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchUsers(), 300);
@@ -580,9 +640,9 @@ export function EmployeesClient() {
       </div>
 
       <div className="rounded-xl border border-zinc-200 bg-white">
-        {loading ? (
-          <div className="p-8 text-center text-zinc-500">Loading…</div>
-        ) : filteredUsers.length === 0 ? (
+        {initialLoadPending && showListSkeleton ? (
+          <EmployeesListSkeleton />
+        ) : initialLoadPending ? null : filteredUsers.length === 0 ? (
           <div className="p-8 text-center text-zinc-500">No technicians found.</div>
         ) : (
           <div className="divide-y divide-zinc-100">

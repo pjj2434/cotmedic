@@ -6,6 +6,7 @@ import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -33,6 +34,8 @@ import {
   Check,
   Copy,
   Mail,
+  Trash2,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import { printWorkOrderContent } from "@/lib/print-work-order";
@@ -51,6 +54,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ReportDateField } from "@/components/report-date-field";
 import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
 import { uploadFiles } from "@/lib/uploadthing";
@@ -518,17 +531,73 @@ function ReportFormatToggle({
   );
 }
 
+const WORK_ORDERS_LIST_SKELETON_DELAY_MS = 200;
+const WORK_ORDERS_LIST_SKELETON_ROWS = 5;
+
+function WorkOrderListSkeleton({
+  clientLike,
+  showOwnerStyleFilters,
+  rowCount = WORK_ORDERS_LIST_SKELETON_ROWS,
+}: {
+  clientLike: boolean;
+  showOwnerStyleFilters: boolean;
+  rowCount?: number;
+}) {
+  if (clientLike) {
+    return (
+      <div className="space-y-2 p-3 sm:space-y-2.5 sm:p-4">
+        {Array.from({ length: rowCount }, (_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-white px-3 py-3.5 shadow-sm sm:px-4"
+          >
+            <Skeleton className="size-10 shrink-0 rounded-xl bg-zinc-200/80" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <Skeleton className="h-4 w-[min(100%,16rem)] rounded bg-zinc-200/80" />
+              <Skeleton className="h-3.5 w-[min(100%,11rem)] rounded bg-zinc-200/70" />
+              <Skeleton className="h-5 w-24 rounded-md bg-zinc-200/70" />
+            </div>
+            <Skeleton className="size-4 shrink-0 rounded bg-zinc-200/60" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-zinc-200">
+      {Array.from({ length: rowCount }, (_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-[min(100%,18rem)] rounded bg-zinc-200/80" />
+            <Skeleton className="h-3.5 w-[min(100%,12rem)] rounded bg-zinc-200/70" />
+            {showOwnerStyleFilters && (
+              <Skeleton className="h-3 w-[min(100%,9rem)] rounded bg-zinc-200/60" />
+            )}
+            <Skeleton className="h-5 w-24 rounded-md bg-zinc-200/70" />
+          </div>
+          <Skeleton className="size-4 shrink-0 rounded bg-zinc-200/60" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function WorkOrderListRowWithOptionalFileDrop({
   order: o,
   clientLike,
   showOwnerStyleFilters,
   fileDropEnabled,
+  showDeleteButton,
+  onDeleteClick,
   onFilesUploaded,
 }: {
   order: WorkOrder;
   clientLike: boolean;
   showOwnerStyleFilters: boolean;
   fileDropEnabled: boolean;
+  showDeleteButton: boolean;
+  onDeleteClick: () => void;
   onFilesUploaded: () => void;
 }) {
   const [fileDragOver, setFileDragOver] = useState(false);
@@ -591,15 +660,21 @@ function WorkOrderListRowWithOptionalFileDrop({
     [fileDropEnabled, o.id, onFilesUploaded]
   );
 
-  const linkClass = cn(
-    "flex items-center justify-between gap-3 transition-colors",
+  const rowClass = cn(
+    "flex items-stretch transition-colors",
     clientLike
-      ? "group rounded-xl border border-zinc-100 bg-white px-3 py-3.5 shadow-sm hover:border-red-100 hover:bg-red-50/35 hover:shadow-md sm:px-4"
-      : "border-l-2 border-transparent px-4 py-3 hover:border-zinc-300 hover:bg-zinc-50"
+      ? "group rounded-xl border border-zinc-100 bg-white shadow-sm hover:border-red-100 hover:bg-red-50/35 hover:shadow-md"
+      : "border-l-2 border-transparent hover:border-zinc-300 hover:bg-zinc-50"
+  );
+
+  const linkClass = cn(
+    "flex min-w-0 flex-1 items-center justify-between gap-3",
+    clientLike ? "px-3 py-3.5 sm:px-4" : "px-4 py-3"
   );
 
   const linkInner = (
-    <Link href={`/portal/work-orders/${o.id}`} className={linkClass}>
+    <div className={rowClass}>
+      <Link href={`/portal/work-orders/${o.id}`} className={linkClass}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {clientLike && (
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-100/90 text-red-700 shadow-inner shadow-red-200/20">
@@ -649,13 +724,26 @@ function WorkOrderListRowWithOptionalFileDrop({
           )}
         </div>
       </div>
-      <ChevronRight
-        className={cn(
-          "size-4 shrink-0 text-zinc-400",
-          clientLike && "transition-transform group-hover:translate-x-0.5 group-hover:text-red-500"
-        )}
-      />
-    </Link>
+        <ChevronRight
+          className={cn(
+            "size-4 shrink-0 text-zinc-400",
+            clientLike && "transition-transform group-hover:translate-x-0.5 group-hover:text-red-500"
+          )}
+        />
+      </Link>
+      {showDeleteButton && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="my-auto mr-2 size-8 shrink-0 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+          aria-label="Delete work order"
+          onClick={onDeleteClick}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      )}
+    </div>
   );
 
   if (!fileDropEnabled) {
@@ -712,7 +800,8 @@ export function WorkOrdersClient({
   const listFiltersStorageKey = `${WORK_ORDERS_LIST_FILTERS_STORAGE_PREFIX}${userId}`;
 
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoadPending, setInitialLoadPending] = useState(true);
+  const [showListSkeleton, setShowListSkeleton] = useState(false);
   /** After the first successful list fetch for this mount, avoid full-page loading on refetches (e.g. type filter). */
   const workOrdersFetchCompletedOnce = useRef(false);
   const [filterType, setFilterType] = useState<string>("all");
@@ -741,6 +830,10 @@ export function WorkOrdersClient({
   const [ownerListLimit, setOwnerListLimit] = useState(OWNER_WORK_ORDERS_PAGE_SIZE);
   const [technicianListLimit, setTechnicianListLimit] = useState(TECHNICIAN_WORK_ORDERS_PAGE_SIZE);
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
+  const canDeleteWorkOrders = role === "owner";
+  const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
+  const [deletingWorkOrder, setDeletingWorkOrder] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [assistanceDialogOpen, setAssistanceDialogOpen] = useState(false);
   const [copiedContactEmail, setCopiedContactEmail] = useState(false);
   const [listFiltersHydrated, setListFiltersHydrated] = useState(!shouldPersistListFilters);
@@ -853,10 +946,19 @@ export function WorkOrdersClient({
     return () => cancelAnimationFrame(id);
   }, [printRunId]);
 
-  const fetchWorkOrders = useCallback(async () => {
-    if (!workOrdersFetchCompletedOnce.current) {
-      setLoading(true);
+  useEffect(() => {
+    if (!initialLoadPending) {
+      setShowListSkeleton(false);
+      return;
     }
+    const timer = window.setTimeout(
+      () => setShowListSkeleton(true),
+      WORK_ORDERS_LIST_SKELETON_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [initialLoadPending]);
+
+  const fetchWorkOrders = useCallback(async () => {
     try {
       const params = new URLSearchParams();
       if (filterType !== "all") params.set("type", filterType);
@@ -866,8 +968,24 @@ export function WorkOrdersClient({
     } catch {
       setWorkOrders([]);
     } finally {
-      setLoading(false);
+      setInitialLoadPending(false);
       workOrdersFetchCompletedOnce.current = true;
+    }
+  }, [filterType]);
+
+  const refreshWorkOrders = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterType !== "all") params.set("type", filterType);
+      const res = await fetch(`/api/work-orders?${params}`);
+      if (!res.ok) throw new Error("Failed to refresh");
+      const data = await res.json();
+      setWorkOrders(data.workOrders ?? []);
+    } catch {
+      toast.error("Failed to refresh work orders");
+    } finally {
+      setRefreshing(false);
     }
   }, [filterType]);
 
@@ -879,6 +997,30 @@ export function WorkOrdersClient({
       )
     );
   }, []);
+
+  /** After a successful delete, drop the row locally so search/filters stay in sync without refetching. */
+  const removeWorkOrderFromList = useCallback((workOrderId: string) => {
+    setWorkOrders((prev) => prev.filter((order) => order.id !== workOrderId));
+  }, []);
+
+  const handleDeleteWorkOrder = useCallback(async () => {
+    if (!deleteOrderId) return;
+    setDeletingWorkOrder(true);
+    try {
+      const res = await fetch(`/api/work-orders?id=${encodeURIComponent(deleteOrderId)}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to delete");
+      removeWorkOrderFromList(deleteOrderId);
+      toast.success("Work order deleted");
+      setDeleteOrderId(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete work order");
+    } finally {
+      setDeletingWorkOrder(false);
+    }
+  }, [deleteOrderId, removeWorkOrderFromList]);
 
   const fetchCustomers = useCallback(async (type: "cot" | "lift") => {
     setCustomersLoading(true);
@@ -1435,19 +1577,31 @@ export function WorkOrdersClient({
             </div>
           </div>
         )}
-        {loading ? (
-          <div
-            className={cn(
-              "p-8 text-center text-zinc-500",
-              clientLike && "py-12 text-sm"
-            )}
-          >
-            Loading…
-          </div>
-        ) : filteredOrders.length === 0 ? (
+        {initialLoadPending && showListSkeleton ? (
+          <WorkOrderListSkeleton
+            clientLike={clientLike}
+            showOwnerStyleFilters={showOwnerStyleFilters}
+          />
+        ) : initialLoadPending ? null : filteredOrders.length === 0 ? (
           searchQueryActive ? (
             <div className="p-8 text-center text-zinc-500">
-              No work orders match &ldquo;{filterQuery.trim()}&rdquo;.
+              <p>
+                No work orders match &ldquo;{filterQuery.trim()}&rdquo;.
+              </p>
+              <p className="mx-auto mt-2 max-w-sm text-sm text-zinc-400">
+                If someone just submitted one, refresh the list and try again.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                disabled={refreshing}
+                onClick={() => void refreshWorkOrders()}
+              >
+                <RefreshCw className={cn("mr-1.5 size-3.5", refreshing && "animate-spin")} />
+                Refresh list
+              </Button>
             </div>
           ) : clientLike ? (
             <div className="p-6 sm:p-8">
@@ -1478,6 +1632,8 @@ export function WorkOrdersClient({
                   clientLike={clientLike}
                   showOwnerStyleFilters={showOwnerStyleFilters}
                   fileDropEnabled={canAttachFilesOnList}
+                  showDeleteButton={canDeleteWorkOrders}
+                  onDeleteClick={() => setDeleteOrderId(o.id)}
                   onFilesUploaded={() => markWorkOrderHasFiles(o.id)}
                 />
               ))}
@@ -2010,6 +2166,36 @@ export function WorkOrdersClient({
           </DialogContent>
         </Dialog>
       )}
+
+      <AlertDialog
+        open={deleteOrderId !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingWorkOrder) setDeleteOrderId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this work order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this work order? This permanently removes it and its
+              attachments. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingWorkOrder}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deletingWorkOrder}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeleteWorkOrder();
+              }}
+            >
+              {deletingWorkOrder ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
