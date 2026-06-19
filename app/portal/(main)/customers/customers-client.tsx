@@ -119,6 +119,9 @@ function emptyCreateForm() {
   };
 }
 
+const BETTER_AUTH_MAX_USERNAME_LENGTH = 30;
+const PENDING_USER_ID_PREFIX = "pending_";
+
 function slugifyForUserId(input: string): string {
   const slug = input
     .trim()
@@ -134,8 +137,11 @@ function randomSuffix(): string {
 }
 
 function generateDeferredCredentials(name: string): { userId: string; password: string } {
-  const base = slugifyForUserId(name);
-  const userId = `pending_${base}_${randomSuffix()}`;
+  const suffix = randomSuffix();
+  const maxBaseLength =
+    BETTER_AUTH_MAX_USERNAME_LENGTH - PENDING_USER_ID_PREFIX.length - 1 - suffix.length;
+  const base = slugifyForUserId(name).slice(0, Math.max(maxBaseLength, 1));
+  const userId = `${PENDING_USER_ID_PREFIX}${base}_${suffix}`;
   const password = `${randomSuffix()}${randomSuffix()}A1!`;
   return { userId, password };
 }
@@ -453,6 +459,10 @@ export function CustomersClient() {
         setCreateError("User ID is required.");
         return;
       }
+      if (createForm.userId.trim().length > BETTER_AUTH_MAX_USERNAME_LENGTH) {
+        setCreateError(`User ID must be ${BETTER_AUTH_MAX_USERNAME_LENGTH} characters or fewer.`);
+        return;
+      }
       if (!sendInvite && (!createForm.password || createForm.password.length < 8)) {
         setCreateError("Password must be at least 8 characters.");
         return;
@@ -539,6 +549,10 @@ export function CustomersClient() {
     if (!resetUser) return;
     if (!resetUserId.trim()) {
       setResetError("User ID is required.");
+      return;
+    }
+    if (resetUserId.trim().length > BETTER_AUTH_MAX_USERNAME_LENGTH) {
+      setResetError(`User ID must be ${BETTER_AUTH_MAX_USERNAME_LENGTH} characters or fewer.`);
       return;
     }
 
