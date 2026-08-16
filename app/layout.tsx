@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 import { PreventZoom } from "@/components/prevent-zoom";
 import { PwaRegister } from "@/components/pwa-register";
@@ -45,6 +46,7 @@ export default function RootLayout({
         <PreventZoom />
         <PwaRegister />
         {children}
+        <Toaster richColors position="top-center" />
       </body>
     </html>
   );

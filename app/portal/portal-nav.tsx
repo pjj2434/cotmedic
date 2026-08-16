@@ -6,7 +6,6 @@ import { LogOut } from "lucide-react";
 import { TechnicianWorkOrderSearch } from "@/components/technician-work-order-search";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
-import { isLocationPortalRole } from "@/lib/portal-roles";
 
 const clientNavIconBtn =
   "inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1";
@@ -18,6 +17,11 @@ const allNavItems = [
   {
     href: "/portal/work-orders",
     label: "Work Orders",
+    roles: ["owner", "technician", "client", "employee", "administrator"],
+  },
+  {
+    href: "/portal/checklist",
+    label: "Checklist",
     roles: ["owner", "technician", "client", "employee", "administrator"],
   },
   { href: "/portal/files", label: "Files", roles: ["client", "employee", "administrator"] },
@@ -70,7 +74,7 @@ export function PortalNav({
             </div>
           </div>
         </div>
-        {role && !isLocationPortalRole(role) && (
+        {navItems.length > 0 && (
           <div className="mt-3 -mx-4 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
             <div className="flex min-w-max items-center gap-1.5">
               {navItems.map(({ href, label }) => (

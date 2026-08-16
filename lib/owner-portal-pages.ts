@@ -5,7 +5,13 @@ export const OWNER_PORTAL_PAGES = [
   { href: "/portal/customers", label: "Locations & logins", keywords: "customers locations portal logins clients" },
   { href: "/portal/client-database", label: "Client database", keywords: "crm quickbooks clients billing" },
   { href: "/portal/work-orders", label: "Work orders", keywords: "repairs reports cot lift" },
+  {
+    href: "/portal/checklist",
+    label: "Checklist",
+    keywords: "pm preventative maintenance pass fail inspection",
+  },
   { href: "/portal/analytics", label: "Analytics", keywords: "metrics charts stats" },
+
   { href: "/portal/settings/password", label: "Settings", keywords: "password account security" },
 ] as const;
 

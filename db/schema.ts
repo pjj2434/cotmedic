@@ -219,3 +219,19 @@ export const magicLinkDelivery = sqliteTable("magicLinkDelivery", {
   lastCheckedAt: text("lastCheckedAt"),
   updatedAt: text("updatedAt").notNull(),
 });
+
+/** Preventative maintenance checklist submitted by owner or technician. */
+export const checklist = sqliteTable("checklist", {
+  id: text("id").primaryKey(),
+  technicianId: text("technicianId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  customerId: text("customerId")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "cot" | "lift"
+  formData: text("formData").notNull(), // JSON
+  submittedById: text("submittedById").references(() => user.id, { onDelete: "set null" }),
+  createdAt: text("createdAt").notNull(),
+  updatedAt: text("updatedAt").notNull(),
+});

@@ -13,6 +13,7 @@ const ownerNavItems = [
   { href: "/portal/customers", label: "Locations & logins" },
   { href: "/portal/client-database", label: "Client database" },
   { href: "/portal/work-orders", label: "Work Orders" },
+  { href: "/portal/checklist", label: "Checklist" },
   { href: "/portal/analytics", label: "Analytics" },
   { href: "/portal/settings/password", label: "Settings" },
 ];

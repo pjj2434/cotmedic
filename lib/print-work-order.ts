@@ -18,6 +18,7 @@ export function printWorkOrderContent(
     ("standalone" in navigator &&
       Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
   const isReportPrint = !!printRoot.querySelector(".report-print-sheet");
+  const isChecklistPrint = !!printRoot.querySelector(".checklist-form-view");
 
   const printStyles = isReportPrint
     ? `
@@ -168,6 +169,23 @@ export function printWorkOrderContent(
     .report-print-sheet .report-data-table .cell-work p { margin: 0 0 3px 0 !important; }
     .report-print-sheet .report-data-table .cell-work p:last-child { margin-bottom: 0 !important; }
     .report-print-sheet .report-data-table .cell-label { font-weight: 700 !important; }
+  `
+    : isChecklistPrint
+      ? `
+    @page { size: 8.5in 11in; margin: 0.35in; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff !important; width: auto; height: auto; overflow: visible; }
+    .print-root { display: block; width: 100%; }
+    .print-scale { width: 100% !important; max-width: none !important; margin: 0 !important; transform: none !important; }
+    .checklist-form-view .form-shell { padding: 0 !important; background: #fff !important; min-height: 0 !important; }
+    .checklist-form-view .form-card {
+      width: 100% !important;
+      max-width: none !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+      min-height: 0 !important;
+    }
   `
     : `
     @page { size: 8.5in 11in; margin: 0.2in; }
