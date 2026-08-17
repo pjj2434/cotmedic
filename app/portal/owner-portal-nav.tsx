@@ -22,10 +22,19 @@ export function OwnerPortalNav({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  // Soft navigations must drop top-tab chrome without a full reload.
+  const onLayoutSample =
+    pathname === "/portal/settings/layout-sample" ||
+    pathname.startsWith("/portal/settings/layout-sample/");
+
   async function handleSignOut() {
     await authClient.signOut({ fetchOptions: { method: "POST" } });
     router.push("/");
     router.refresh();
+  }
+
+  if (onLayoutSample) {
+    return <>{children}</>;
   }
 
   const headerIconBtn =
@@ -65,7 +74,9 @@ export function OwnerPortalNav({ children }: { children: React.ReactNode }) {
                   "whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium tracking-[-0.01em] transition-colors",
                   pathname === href ||
                     (href !== "/portal" && pathname.startsWith(`${href}/`)) ||
-                    (href === "/portal/settings/password" && pathname.startsWith("/portal/settings"))
+                    (href === "/portal/settings/password" &&
+                      (pathname === "/portal/settings/password" ||
+                        pathname.startsWith("/portal/settings/password/")))
                     ? "border-red-200 bg-red-50 text-red-700"
                     : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
                 )}
