@@ -288,6 +288,7 @@ export async function GET(request: Request) {
   const matchedChecklists = await db
     .select({
       id: checklist.id,
+      type: checklist.type,
       formData: checklist.formData,
       createdAt: checklist.createdAt,
       customerName: checklistCustomer.name,
@@ -310,12 +311,17 @@ export async function GET(request: Request) {
     } catch {
       /* ignore */
     }
-    const typeLabel =
-      equipmentType === "lift" ? "Lift" : equipmentType === "stretcher" ? "Stretcher" : "COTMEDIC";
+    const brand = row.type === "lift" ? "Lift Medik" : "Cot Medik";
+    const equipment =
+      equipmentType === "lift"
+        ? "Lift"
+        : equipmentType === "stretcher"
+          ? "Stretcher"
+          : "";
     return {
       id: `checklist:${row.id}`,
       type: "checklist" as const,
-      title: `${row.customerName} · ${typeLabel}`,
+      title: equipment ? `${row.customerName} · ${brand} · ${equipment}` : `${row.customerName} · ${brand}`,
       subtitle: describeChecklistSearchMatch(q, {
         customerName: row.customerName ?? "—",
         technicianName: row.technicianName ?? "—",

@@ -7,7 +7,7 @@ import { checklist, user } from "@/db/schema";
 import { formatCalendarIsoDate, parseWorkOrderDateToIso } from "@/lib/work-order-date";
 import { workOrderCustomerScope } from "@/lib/portal-access";
 
-type WorkType = "cot"; // "lift" later when Lift Medik checklist exists
+type WorkType = "cot" | "lift";
 
 function parseChecklistMeta(formData: string) {
   try {
@@ -23,6 +23,7 @@ function parseChecklistMeta(formData: string) {
       serialNumber: typeof data.serialNumber === "string" ? data.serialNumber.trim() : "",
       equipmentType,
       workOrderType: typeof data.workOrderType === "string" ? data.workOrderType.trim() : "",
+      variant: typeof data.variant === "string" ? data.variant : "",
     };
   } catch {
     return {
@@ -31,6 +32,7 @@ function parseChecklistMeta(formData: string) {
       serialNumber: "",
       equipmentType: "",
       workOrderType: "",
+      variant: "",
     };
   }
 }
@@ -65,7 +67,7 @@ export async function GET(request: Request) {
 
   const conditions: SQL[] = [];
   if (id) conditions.push(eq(checklist.id, id));
-  if (type === "cot") conditions.push(eq(checklist.type, type));
+  if (type === "cot" || type === "lift") conditions.push(eq(checklist.type, type));
   if (role === "technician") conditions.push(eq(checklist.technicianId, authUser.id));
   if (role === "client" || role === "employee" || role === "administrator") {
     const scopeResult = appendChecklistCustomerScope(role, authUser, conditions);
@@ -150,9 +152,9 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  // Checklist is COTMEDIC-only for now; allow "lift" later when that form exists.
-  if (type !== "cot") {
-    return NextResponse.json({ error: "type must be cot (COTMEDIC)" }, { status: 400 });
+  // Checklist brand type: cot (Cot Medik) or lift (Lift Medik PM).
+  if (type !== "cot" && type !== "lift") {
+    return NextResponse.json({ error: "type must be cot or lift" }, { status: 400 });
   }
 
   const dateOfService =
@@ -250,16 +252,19 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Date of service is required" }, { status: 400 });
   }
 
-  const equipmentType =
-    typeof body.formData === "object" &&
-    body.formData &&
-    "equipmentType" in body.formData &&
-    ((body.formData as Record<string, unknown>).equipmentType === "lift" ||
-      (body.formData as Record<string, unknown>).equipmentType === "stretcher")
-      ? (body.formData as Record<string, unknown>).equipmentType
-      : "";
-  if (!equipmentType) {
-    return NextResponse.json({ error: "equipmentType must be stretcher or lift" }, { status: 400 });
+  const form = body.formData as Record<string, unknown>;
+  const isLiftPm = form.variant === "lift-pm";
+  if (!isLiftPm) {
+    const equipmentType =
+      form.equipmentType === "lift" || form.equipmentType === "stretcher"
+        ? form.equipmentType
+        : "";
+    if (!equipmentType) {
+      return NextResponse.json(
+        { error: "equipmentType must be stretcher or lift" },
+        { status: 400 }
+      );
+    }
   }
 
   const [row] = await db.select({ id: checklist.id }).from(checklist).where(eq(checklist.id, id)).limit(1);

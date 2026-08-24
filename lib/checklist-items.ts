@@ -1,4 +1,4 @@
-export type ChecklistResult = "Passed" | "Failed";
+export type ChecklistResult = "Passed" | "Failed" | "N/A";
 
 export type ChecklistItem = {
   desc: string;

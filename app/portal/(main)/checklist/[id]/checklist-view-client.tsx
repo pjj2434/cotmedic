@@ -57,6 +57,7 @@ export function ChecklistViewClient({
   const router = useRouter();
   const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
   const printContentRef = useRef<HTMLDivElement>(null);
+  const summaryPrintRef = useRef<HTMLDivElement>(null);
   const [record, setRecord] = useState<ChecklistRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,9 +80,15 @@ export function ChecklistViewClient({
       .finally(() => setLoading(false));
   }, [load]);
 
-  function handlePrint() {
+  function handlePrintFull() {
     if (printContentRef.current && record) {
       printWorkOrderContent(printContentRef.current);
+    }
+  }
+
+  function handlePrintSummary() {
+    if (summaryPrintRef.current && record) {
+      printWorkOrderContent(summaryPrintRef.current);
     }
   }
 
@@ -129,6 +136,7 @@ export function ChecklistViewClient({
   }
 
   const formData = parseChecklistFormData(record.formData);
+  const brandType = record.type === "lift" ? "lift" : "cot";
 
   return (
     <div className="min-h-screen bg-zinc-100 -mx-4 -mt-4 w-[calc(100%+2rem)] sm:-mx-5 sm:-mt-5 sm:w-[calc(100%+2.5rem)] md:-mx-6 md:w-[calc(100%+3rem)]">
@@ -142,11 +150,20 @@ export function ChecklistViewClient({
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             size="sm"
+            variant="outline"
             className={cn(disablePrintOnMobilePwa ? "hidden" : "hidden sm:inline-flex")}
-            onClick={handlePrint}
+            onClick={handlePrintSummary}
           >
             <Printer className="mr-2 size-4" />
-            Print
+            Print summary
+          </Button>
+          <Button
+            size="sm"
+            className={cn(disablePrintOnMobilePwa ? "hidden" : "hidden sm:inline-flex")}
+            onClick={handlePrintFull}
+          >
+            <Printer className="mr-2 size-4" />
+            Print full
           </Button>
           {role === "owner" && (
             <Button variant="outline" size="sm" asChild>
@@ -206,8 +223,22 @@ export function ChecklistViewClient({
             <ChecklistFormView
               formData={formData}
               technicianName={record.technicianName}
+              brandType={brandType}
               compact
+              mode="full"
             />
+          </div>
+          {/* Off-screen summary root for print-only header/equipment */}
+          <div className="pointer-events-none fixed left-[-10000px] top-0" aria-hidden>
+            <div ref={summaryPrintRef}>
+              <ChecklistFormView
+                formData={formData}
+                technicianName={record.technicianName}
+                brandType={brandType}
+                compact={false}
+                mode="summary"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -225,7 +256,9 @@ export function ChecklistViewClient({
               <ChecklistFormView
                 formData={formData}
                 technicianName={record.technicianName}
+                brandType={brandType}
                 compact={false}
+                mode="full"
               />
             </div>
           </DialogContent>

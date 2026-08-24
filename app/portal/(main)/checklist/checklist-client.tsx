@@ -36,10 +36,7 @@ import {
 import type { Role } from "@/lib/with-auth";
 import { isLocationPortalRole } from "@/lib/portal-roles";
 
-/** Checklist is COTMEDIC-only for now; lift will be added later. */
-const CHECKLIST_TYPE = "cot" as const;
-const CHECKLIST_TYPE_LABEL = "COTMEDIC";
-
+type WorkType = "cot" | "lift";
 type EquipmentType = "stretcher" | "lift";
 
 type Technician = { id: string; name: string };
@@ -62,6 +59,10 @@ function equipmentLabel(value?: string) {
   if (value === "lift") return "Lift";
   if (value === "stretcher") return "Stretcher";
   return null;
+}
+
+function brandLabel(type?: string) {
+  return type === "lift" ? "Lift Medik" : "Cot Medik";
 }
 
 export function ChecklistClient({
@@ -93,6 +94,8 @@ export function ChecklistClient({
   const [filterCustomerId, setFilterCustomerId] = useState<string>("__all__");
   const [filterQuery, setFilterQuery] = useState(() => searchParams.get("q")?.trim() ?? "");
   const [filterEquipment, setFilterEquipment] = useState<string>("__all__");
+  const [filterBrand, setFilterBrand] = useState<string>("__all__");
+  const [workType, setWorkType] = useState<WorkType | "">("");
 
   useEffect(() => {
     const q = searchParams.get("q")?.trim() ?? "";
@@ -139,10 +142,16 @@ export function ChecklistClient({
   }, [fetchChecklists]);
 
   useEffect(() => {
-    if (!canCreate && !isOwner) return;
+    if (!canCreate) return;
+    if (!workType) {
+      setCustomers([]);
+      setSelectedCustomer(null);
+      return;
+    }
     let cancelled = false;
     setCustomersLoading(true);
-    fetch(`/api/customers?type=${encodeURIComponent(CHECKLIST_TYPE)}`)
+    setSelectedCustomer(null);
+    fetch(`/api/customers?type=${encodeURIComponent(workType)}`)
       .then(async (res) => {
         if (!res.ok) throw new Error("Failed to fetch customers");
         const data = (await res.json()) as { customers?: Customer[] };
@@ -157,7 +166,7 @@ export function ChecklistClient({
     return () => {
       cancelled = true;
     };
-  }, [canCreate, isOwner]);
+  }, [canCreate, workType]);
 
   const filterCustomers = useMemo(() => {
     const map = new Map<string, string>();
@@ -175,6 +184,9 @@ export function ChecklistClient({
       if (isOwner && filterCustomerId !== "__all__" && item.customerId !== filterCustomerId) {
         return false;
       }
+      if (filterBrand !== "__all__" && item.type !== filterBrand) {
+        return false;
+      }
       if (
         filterEquipment !== "__all__" &&
         item.equipmentType !== (filterEquipment as EquipmentType)
@@ -189,6 +201,7 @@ export function ChecklistClient({
           item.technicianName,
           item.equipmentType ?? "",
           eq,
+          brandLabel(item.type),
           item.workDateLabel ?? "",
         ]
           .join(" ")
@@ -197,7 +210,7 @@ export function ChecklistClient({
       }
       return true;
     });
-  }, [submitted, isOwner, filterCustomerId, filterQuery, filterEquipment]);
+  }, [submitted, isOwner, filterCustomerId, filterQuery, filterEquipment, filterBrand]);
 
   async function handleDelete() {
     if (!deleteId) return;
@@ -224,23 +237,24 @@ export function ChecklistClient({
       ? { id: userId, name: technicianName }
       : null;
   const formUrl =
-    canCreate && selectedCustomer && activeTechnician
-      ? `/checklist-form?type=${encodeURIComponent(CHECKLIST_TYPE)}&techName=${encodeURIComponent(activeTechnician.name)}&techId=${encodeURIComponent(activeTechnician.id)}&customerId=${encodeURIComponent(selectedCustomer.id)}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/checklist")}`
+    canCreate && workType && selectedCustomer && activeTechnician
+      ? `/checklist-form?type=${encodeURIComponent(workType)}&techName=${encodeURIComponent(activeTechnician.name)}&techId=${encodeURIComponent(activeTechnician.id)}&customerId=${encodeURIComponent(selectedCustomer.id)}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/checklist")}`
       : null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
+    <div className="mx-auto w-full max-w-5xl space-y-3">
       {canCreate && (
-        <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <h2 className="font-medium text-zinc-900">New checklist</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Select {isOwner ? "technician and customer" : "customer"} to open a{" "}
-            {CHECKLIST_TYPE_LABEL} checklist.
-          </p>
-          <div className="mt-4 space-y-3">
+        <div className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+            <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+              <h2 className="text-sm font-medium text-zinc-900">New checklist</h2>
+              <p className="text-xs text-zinc-500">
+                {isOwner ? "Tech, type, customer" : "Type and customer"}
+              </p>
+            </div>
             {isOwner && (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <Label className="w-20 shrink-0">Tech</Label>
+              <div className="min-w-[10rem] flex-1 sm:max-w-[14rem]">
+                <Label className="mb-1 text-xs text-zinc-500">Tech</Label>
                 <Combobox
                   items={technicians}
                   value={selectedTechnician}
@@ -249,10 +263,8 @@ export function ChecklistClient({
                   isItemEqualToValue={(a, b) => (a as Technician)?.id === (b as Technician)?.id}
                 >
                   <ComboboxInput
-                    className="h-11 w-full text-base sm:h-9 sm:w-[260px] sm:text-sm"
-                    placeholder={
-                      techniciansLoading ? "Loading technicians…" : "Search technician…"
-                    }
+                    className="h-9 w-full text-sm"
+                    placeholder={techniciansLoading ? "Loading…" : "Technician…"}
                     disabled={techniciansLoading}
                     showClear={!!selectedTechnician}
                   />
@@ -261,7 +273,7 @@ export function ChecklistClient({
                     <ComboboxList>
                       {(item) => (
                         <ComboboxItem
-                          className="min-h-11 px-3 text-base sm:min-h-8 sm:px-1.5 sm:text-sm"
+                          className="min-h-8 px-1.5 text-sm"
                           key={(item as Technician).id}
                           value={item as Technician}
                         >
@@ -274,8 +286,24 @@ export function ChecklistClient({
               </div>
             )}
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <Label className="w-20 shrink-0">Customer</Label>
+            <div className="w-full sm:w-[9.5rem]">
+              <Label className="mb-1 text-xs text-zinc-500">Type</Label>
+              <Select
+                value={workType || "__none__"}
+                onValueChange={(v) => setWorkType(v === "__none__" ? "" : (v as WorkType))}
+              >
+                <SelectTrigger className="h-9 w-full text-sm">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cot">Cot Medik</SelectItem>
+                  <SelectItem value="lift">Lift Medik</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="min-w-[10rem] flex-1 sm:max-w-[16rem]">
+              <Label className="mb-1 text-xs text-zinc-500">Customer</Label>
               <Combobox
                 items={customers}
                 value={selectedCustomer}
@@ -284,9 +312,15 @@ export function ChecklistClient({
                 isItemEqualToValue={(a, b) => (a as Customer)?.id === (b as Customer)?.id}
               >
                 <ComboboxInput
-                  className="h-11 w-full text-base sm:h-9 sm:w-[260px] sm:text-sm"
-                  placeholder={customersLoading ? "Loading…" : "Search customer…"}
-                  disabled={customersLoading}
+                  className="h-9 w-full text-sm"
+                  placeholder={
+                    !workType
+                      ? "Select type first…"
+                      : customersLoading
+                        ? "Loading…"
+                        : "Customer…"
+                  }
+                  disabled={!workType || customersLoading}
                   showClear={!!selectedCustomer}
                 />
                 <ComboboxContent>
@@ -294,7 +328,7 @@ export function ChecklistClient({
                   <ComboboxList>
                     {(item) => (
                       <ComboboxItem
-                        className="min-h-11 px-3 text-base sm:min-h-8 sm:px-1.5 sm:text-sm"
+                        className="min-h-8 px-1.5 text-sm"
                         key={(item as Customer).id}
                         value={item as Customer}
                       >
@@ -305,11 +339,12 @@ export function ChecklistClient({
                 </ComboboxContent>
               </Combobox>
             </div>
+
             {formUrl && (
-              <Button asChild className="w-full bg-red-600 hover:bg-red-700 sm:w-auto">
+              <Button asChild size="sm" className="h-9 bg-red-600 hover:bg-red-700">
                 <Link href={formUrl}>
-                  <FileText className="mr-2 size-4" />
-                  Open checklist
+                  <FileText className="mr-1.5 size-4" />
+                  Open {workType === "cot" ? "Cot" : "Lift"}
                 </Link>
               </Button>
             )}
@@ -318,23 +353,26 @@ export function ChecklistClient({
       )}
 
       <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
-        <div className="border-b border-zinc-200 p-4">
-          <h2 className="font-medium text-zinc-900">
-            {isOwner ? "All checklists" : clientLike ? "Your checklists" : "Checklist history"}
-          </h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            {clientLike
-              ? "PM checklists for your location appear here."
-              : "Submitted checklists appear here, same as work orders."}
-          </p>
+        <div className="border-b border-zinc-200 px-3 py-2.5 sm:px-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-zinc-900">
+              {isOwner ? "All checklists" : clientLike ? "Your checklists" : "Checklist history"}
+            </h2>
+          </div>
 
           {(isOwner || clientLike || role === "technician") && (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div
+              className={
+                isOwner
+                  ? "mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
+                  : "mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+              }
+            >
               {isOwner && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-zinc-500">Customer</Label>
+                <div className="space-y-1">
+                  <Label className="text-[11px] text-zinc-500">Customer</Label>
                   <Select value={filterCustomerId} onValueChange={setFilterCustomerId}>
-                    <SelectTrigger className="h-9 w-full">
+                    <SelectTrigger className="h-8 w-full text-sm">
                       <SelectValue placeholder="All customers" />
                     </SelectTrigger>
                     <SelectContent>
@@ -348,23 +386,36 @@ export function ChecklistClient({
                   </Select>
                 </div>
               )}
-              <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500">Search</Label>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-zinc-500">Search</Label>
                 <Input
                   value={filterQuery}
                   onChange={(e) => setFilterQuery(e.target.value)}
                   placeholder="Serial, customer, tech…"
-                  className="h-9"
+                  className="h-8 text-sm"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-zinc-500">Type</Label>
-                <Select value={filterEquipment} onValueChange={setFilterEquipment}>
-                  <SelectTrigger className="h-9 w-full">
-                    <SelectValue placeholder="All types" />
+              <div className="space-y-1">
+                <Label className="text-[11px] text-zinc-500">Brand</Label>
+                <Select value={filterBrand} onValueChange={setFilterBrand}>
+                  <SelectTrigger className="h-8 w-full text-sm">
+                    <SelectValue placeholder="All brands" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__all__">All types</SelectItem>
+                    <SelectItem value="__all__">All brands</SelectItem>
+                    <SelectItem value="cot">Cot Medik</SelectItem>
+                    <SelectItem value="lift">Lift Medik</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-zinc-500">Equipment</Label>
+                <Select value={filterEquipment} onValueChange={setFilterEquipment}>
+                  <SelectTrigger className="h-8 w-full text-sm">
+                    <SelectValue placeholder="All equipment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">All equipment</SelectItem>
                     <SelectItem value="stretcher">Stretcher</SelectItem>
                     <SelectItem value="lift">Lift</SelectItem>
                   </SelectContent>
@@ -374,11 +425,11 @@ export function ChecklistClient({
           )}
         </div>
         {listLoading ? (
-          <p className="p-6 text-sm text-zinc-500">Loading…</p>
+          <p className="p-4 text-sm text-zinc-500">Loading…</p>
         ) : submitted.length === 0 ? (
-          <p className="p-6 text-sm text-zinc-500">No checklists submitted yet.</p>
+          <p className="p-4 text-sm text-zinc-500">No checklists submitted yet.</p>
         ) : filtered.length === 0 ? (
-          <p className="p-6 text-sm text-zinc-500">No checklists match these filters.</p>
+          <p className="p-4 text-sm text-zinc-500">No checklists match these filters.</p>
         ) : (
           <ul className="divide-y divide-zinc-100">
             {filtered.map((item) => {
@@ -387,36 +438,21 @@ export function ChecklistClient({
                 <li key={item.id} className="flex items-stretch">
                   <Link
                     href={`/portal/checklist/${item.id}`}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-zinc-50"
+                    className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2 transition-colors hover:bg-zinc-50 sm:px-4"
                   >
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-zinc-900 sm:text-base">
-                        {item.customerName} · {CHECKLIST_TYPE_LABEL}
+                      <p className="truncate text-sm font-medium text-zinc-900">
+                        {item.customerName} · {brandLabel(item.type)}
                         {eqLabel ? ` · ${eqLabel}` : ""}
                       </p>
-                      <p className="text-xs text-zinc-500 sm:text-sm">
+                      <p className="truncate text-xs text-zinc-500">
                         {item.technicianName}
                         {item.workDateLabel ? ` · ${item.workDateLabel}` : ""}
+                        {item.serialNumber ? ` · ${item.serialNumber}` : ""}
+                        {isOwner && item.submittedByName
+                          ? ` · by ${item.submittedByName}`
+                          : ""}
                       </p>
-                      {isOwner && (
-                        <p className="mt-0.5 text-xs text-zinc-500">
-                          Submitted by: {item.submittedByName ?? "—"}
-                        </p>
-                      )}
-                      {(item.serialNumber || eqLabel) && (
-                        <div className="mt-1 flex flex-wrap gap-1.5">
-                          {item.serialNumber ? (
-                            <span className="inline-flex items-center rounded-md bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-700 ring-1 ring-zinc-200 sm:text-xs">
-                              Serial: {item.serialNumber}
-                            </span>
-                          ) : null}
-                          {eqLabel ? (
-                            <span className="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 ring-1 ring-red-100 sm:text-xs">
-                              {eqLabel}
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
                     </div>
                     <ChevronRight className="size-4 shrink-0 text-zinc-400" />
                   </Link>
@@ -425,11 +461,11 @@ export function ChecklistClient({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="my-auto mr-2 size-8 shrink-0 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                      className="my-auto mr-1.5 size-7 shrink-0 text-zinc-400 hover:bg-red-50 hover:text-red-600"
                       aria-label="Delete checklist"
                       onClick={() => setDeleteId(item.id)}
                     >
-                      <Trash2 className="size-4" />
+                      <Trash2 className="size-3.5" />
                     </Button>
                   )}
                 </li>
