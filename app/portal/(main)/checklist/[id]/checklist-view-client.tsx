@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Printer, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -148,6 +148,16 @@ export function ChecklistViewClient({
             <Printer className="mr-2 size-4" />
             Print
           </Button>
+          {role === "owner" && (
+            <Button variant="outline" size="sm" asChild>
+              <Link
+                href={`/checklist-form?checklistId=${encodeURIComponent(record.id)}&type=${encodeURIComponent(record.type)}&techName=${encodeURIComponent(record.technicianName)}&techId=${encodeURIComponent(record.technicianId)}&customerId=${encodeURIComponent(record.customerId)}&customerName=${encodeURIComponent(record.customerName)}&returnTo=${encodeURIComponent(`/portal/checklist/${record.id}`)}`}
+              >
+                <Pencil className="mr-2 size-4" />
+                Edit
+              </Link>
+            </Button>
+          )}
           {role === "owner" && (
             <Button
               variant="outline"

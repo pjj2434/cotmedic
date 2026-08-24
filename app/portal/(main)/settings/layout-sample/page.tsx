@@ -1,7 +1,6 @@
-import { withAuth } from "@/lib/with-auth";
-import { OwnerLayoutSample } from "./owner-layout-sample";
+import { redirect } from "next/navigation";
 
-export default async function OwnerLayoutSamplePage() {
-  await withAuth({ roles: ["owner"], unauthorizedUrl: "/portal/settings/password" });
-  return <OwnerLayoutSample />;
+/** Layout sample is now the live owner sidebar — keep URL from breaking old links. */
+export default function OwnerLayoutSamplePage() {
+  redirect("/portal");
 }

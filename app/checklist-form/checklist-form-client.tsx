@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -51,6 +51,21 @@ function PassFailToggle({
   );
 }
 
+function normalizeChecklistItems(raw: unknown): ChecklistItem[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return INITIAL_CHECKLIST.map((item) => ({ ...item }));
+  }
+  return raw.map((item) => {
+    const row = item as Record<string, unknown>;
+    const result = row.result === "Failed" ? "Failed" : "Passed";
+    return {
+      desc: typeof row.desc === "string" ? row.desc : "",
+      reading: typeof row.reading === "string" ? row.reading : "",
+      result,
+    };
+  });
+}
+
 export function ChecklistFormClient({
   role,
   userId,
@@ -63,18 +78,28 @@ export function ChecklistFormClient({
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const checklistId = searchParams.get("checklistId")?.trim() ?? "";
+  const isEditMode = Boolean(checklistId);
+
   // Checklist is COTMEDIC-only for now; lift type will be added later.
-  const type = searchParams.get("type") === "cot" ? "cot" : "";
-  const customerId = searchParams.get("customerId")?.trim() ?? "";
-  const customerName = searchParams.get("customerName")?.trim() ?? "";
+  const typeParam = searchParams.get("type") === "cot" ? "cot" : "";
+  const customerIdParam = searchParams.get("customerId")?.trim() ?? "";
+  const customerNameParam = searchParams.get("customerName")?.trim() ?? "";
   const techIdParam = searchParams.get("techId")?.trim() ?? "";
   const techNameParam = searchParams.get("techName")?.trim() ?? "";
-  const returnTo = searchParams.get("returnTo")?.trim() || "/portal/checklist";
+  const returnTo =
+    searchParams.get("returnTo")?.trim() ||
+    (checklistId ? `/portal/checklist/${checklistId}` : "/portal/checklist");
 
-  const technicianId = role === "owner" ? techIdParam : userId;
-  const technicianName = role === "owner" ? techNameParam || userName : userName;
-
-  const paramsValid = !!type && !!customerId && !!technicianId;
+  const [type, setType] = useState(typeParam);
+  const [customerId, setCustomerId] = useState(customerIdParam);
+  const [customerName, setCustomerName] = useState(customerNameParam);
+  const [technicianId, setTechnicianId] = useState(
+    role === "owner" ? techIdParam : userId
+  );
+  const [technicianName, setTechnicianName] = useState(
+    role === "owner" ? techNameParam || userName : userName
+  );
 
   const [repairNecessary, setRepairNecessary] = useState(false);
   const [dateOfService, setDateOfService] = useState("");
@@ -82,14 +107,90 @@ export function ChecklistFormClient({
   const [problemDescription, setProblemDescription] = useState("");
   const [repairNotes, setRepairNotes] = useState("");
   const [serialNumber, setSerialNumber] = useState("");
+  const [equipmentType, setEquipmentType] = useState<"stretcher" | "lift" | "">("");
   const [productName, setProductName] = useState("");
   const [modelNumber, setModelNumber] = useState("");
   const [checklist, setChecklist] = useState<ChecklistItem[]>(() =>
     INITIAL_CHECKLIST.map((item) => ({ ...item }))
   );
   const [submitting, setSubmitting] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(isEditMode);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  const paramsValid = !!type && !!customerId && !!technicianId;
   const customerLabel = useMemo(() => customerName || "Customer", [customerName]);
+
+  useEffect(() => {
+    if (!checklistId) return;
+    if (role !== "owner") {
+      setLoadError("Only owners can edit checklists");
+      setLoadingExisting(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingExisting(true);
+    fetch(`/api/checklists?id=${encodeURIComponent(checklistId)}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(res.status === 404 ? "Not found" : "Failed to load");
+        return res.json() as Promise<{
+          type: string;
+          customerId: string;
+          customerName: string;
+          technicianId: string;
+          technicianName: string;
+          formData: string;
+        }>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(data.formData) as Record<string, unknown>;
+        } catch {
+          parsed = {};
+        }
+        setType(data.type === "cot" ? "cot" : typeParam || "cot");
+        setCustomerId(data.customerId || customerIdParam);
+        setCustomerName(data.customerName || customerNameParam);
+        setTechnicianId(data.technicianId || techIdParam || (role === "owner" ? "" : userId));
+        setTechnicianName(
+          data.technicianName || techNameParam || (role === "owner" ? "" : userName)
+        );
+        setRepairNecessary(Boolean(parsed.repairNecessary));
+        setDateOfService(
+          typeof parsed.dateOfService === "string" ? parsed.dateOfService : ""
+        );
+        setWorkOrderType(
+          typeof parsed.workOrderType === "string"
+            ? parsed.workOrderType
+            : "Preventative Maintenance"
+        );
+        setProblemDescription(
+          typeof parsed.problemDescription === "string" ? parsed.problemDescription : ""
+        );
+        setRepairNotes(typeof parsed.repairNotes === "string" ? parsed.repairNotes : "");
+        setSerialNumber(typeof parsed.serialNumber === "string" ? parsed.serialNumber : "");
+        setEquipmentType(
+          parsed.equipmentType === "lift" || parsed.equipmentType === "stretcher"
+            ? parsed.equipmentType
+            : ""
+        );
+        setProductName(typeof parsed.productName === "string" ? parsed.productName : "");
+        setModelNumber(typeof parsed.modelNumber === "string" ? parsed.modelNumber : "");
+        setChecklist(normalizeChecklistItems(parsed.checklist));
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setLoadError(e instanceof Error ? e.message : "Failed to load");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [checklistId, role]);
 
   function updateItem(index: number, patch: Partial<ChecklistItem>) {
     setChecklist((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -104,43 +205,79 @@ export function ChecklistFormClient({
       toast.error("Date of service is required");
       return;
     }
+    if (equipmentType !== "stretcher" && equipmentType !== "lift") {
+      toast.error("Select stretcher or lift");
+      return;
+    }
 
     setSubmitting(true);
     try {
+      const formData = {
+        repairNecessary,
+        technicianName,
+        dateOfService,
+        workOrderType,
+        problemDescription,
+        repairNotes,
+        serialNumber,
+        equipmentType,
+        productName,
+        modelNumber,
+        checklist,
+      };
+
       const res = await fetch("/api/checklists", {
-        method: "POST",
+        method: isEditMode ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type,
-          customerId,
-          technicianId,
-          formData: {
-            repairNecessary,
-            technicianName,
-            dateOfService,
-            workOrderType,
-            problemDescription,
-            repairNotes,
-            serialNumber,
-            productName,
-            modelNumber,
-            checklist,
-          },
-        }),
+        body: JSON.stringify(
+          isEditMode
+            ? { id: checklistId, formData }
+            : { type, customerId, technicianId, formData }
+        ),
       });
       const data = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Failed to submit checklist");
-      toast.success("Checklist submitted");
+      if (!res.ok) {
+        throw new Error(data.error ?? (isEditMode ? "Failed to save" : "Failed to submit"));
+      }
+      toast.success(isEditMode ? "Checklist updated" : "Checklist submitted");
       router.push(data.id ? `/portal/checklist/${data.id}` : returnTo);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to submit checklist");
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : isEditMode
+            ? "Failed to save checklist"
+            : "Failed to submit checklist"
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (!paramsValid) {
+  if (loadingExisting) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-white text-sm text-zinc-500">
+        Loading checklist…
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-white px-4 text-center">
+        <p className="text-zinc-600">{loadError}</p>
+        <Button asChild variant="outline">
+          <Link href="/portal/checklist">
+            <ArrowLeft className="mr-2 size-4" />
+            Back to Checklists
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (!paramsValid && !isEditMode) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-white px-4 text-center">
         <p className="text-zinc-600">Select technician and customer first.</p>
@@ -148,6 +285,20 @@ export function ChecklistFormClient({
           <Link href="/portal/checklist">
             <ArrowLeft className="mr-2 size-4" />
             Back to Checklists
+          </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (!paramsValid && isEditMode) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-white px-4 text-center">
+        <p className="text-zinc-600">Could not load this checklist for editing.</p>
+        <Button asChild variant="outline">
+          <Link href={returnTo}>
+            <ArrowLeft className="mr-2 size-4" />
+            Back
           </Link>
         </Button>
       </div>
@@ -165,6 +316,7 @@ export function ChecklistFormClient({
         </Button>
         <p className="text-sm text-zinc-600 sm:text-base">
           {customerLabel} · COTMEDIC · {technicianName}
+          {isEditMode ? " · Editing" : ""}
         </p>
         <Button
           type="button"
@@ -172,7 +324,7 @@ export function ChecklistFormClient({
           disabled={submitting}
           className="bg-red-600 hover:bg-red-700"
         >
-          {submitting ? "Submitting…" : "Submit"}
+          {submitting ? (isEditMode ? "Saving…" : "Submitting…") : isEditMode ? "Save" : "Submit"}
         </Button>
       </div>
 
@@ -244,7 +396,7 @@ export function ChecklistFormClient({
         <section className="mb-6 sm:mb-7">
           <h2 className="text-lg font-bold sm:text-xl">Asset Information</h2>
           <div className="mb-3 mt-1 border-b-2 border-red-600" />
-          <div className="grid grid-cols-1 gap-y-4 text-sm sm:grid-cols-3 sm:gap-x-8 sm:text-center sm:text-[0.9375rem] lg:gap-x-12">
+          <div className="grid grid-cols-1 gap-y-4 text-sm sm:grid-cols-2 sm:gap-x-8 sm:text-[0.9375rem] lg:grid-cols-4 lg:gap-x-10">
             <Field label="Serial Number" center>
               <input
                 type="text"
@@ -252,6 +404,19 @@ export function ChecklistFormClient({
                 onChange={(e) => setSerialNumber(e.target.value)}
                 className="w-full border-0 border-b border-neutral-300 bg-transparent px-0 py-1 text-neutral-700 outline-none focus:border-red-600 sm:text-center"
               />
+            </Field>
+            <Field label="Type" center>
+              <select
+                value={equipmentType}
+                onChange={(e) =>
+                  setEquipmentType(e.target.value as "stretcher" | "lift" | "")
+                }
+                className="w-full border-0 border-b border-neutral-300 bg-transparent px-0 py-1 text-neutral-700 outline-none focus:border-red-600 sm:text-center"
+              >
+                <option value="">Select…</option>
+                <option value="stretcher">Stretcher</option>
+                <option value="lift">Lift</option>
+              </select>
             </Field>
             <Field label="Product Name" center>
               <input
@@ -291,7 +456,7 @@ export function ChecklistFormClient({
             <tbody>
               {checklist.map((item, i) => (
                 <tr
-                  key={item.desc}
+                  key={`${item.desc}-${i}`}
                   className={cn("border-b border-neutral-200", i % 2 === 1 && "bg-neutral-100")}
                 >
                   <td className="px-3 py-2.5 align-middle text-blue-800 sm:px-4 sm:py-3">
@@ -327,7 +492,13 @@ export function ChecklistFormClient({
             disabled={submitting}
             className="w-full bg-red-600 hover:bg-red-700 sm:w-auto sm:min-w-40"
           >
-            {submitting ? "Submitting…" : "Submit checklist"}
+            {submitting
+              ? isEditMode
+                ? "Saving…"
+                : "Submitting…"
+              : isEditMode
+                ? "Save checklist"
+                : "Submit checklist"}
           </Button>
         </div>
       </div>

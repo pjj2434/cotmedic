@@ -3,20 +3,24 @@ import { and, asc, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { withAuthApi } from "@/lib/with-auth";
 import { db } from "@/db";
-import { clientContact, clientRecord, user, workOrder } from "@/db/schema";
+import { checklist, clientContact, clientRecord, user, workOrder } from "@/db/schema";
 import { searchOwnerPortalPages } from "@/lib/owner-portal-pages";
 import { extractPhoneDigits, phoneDigitsLike } from "@/lib/phone-search";
 import {
   describeWorkOrderSearchMatch,
   workOrderPortalSearchConditions,
 } from "@/lib/work-order-search";
-import { parseWorkOrderFormDateTime } from "@/lib/work-order-date";
+import {
+  checklistPortalSearchConditions,
+  describeChecklistSearchMatch,
+} from "@/lib/checklist-search";
+import { parseWorkOrderFormDateTime, parseWorkOrderDateToIso } from "@/lib/work-order-date";
 
 const LIMIT = 6;
 
 export type PortalSearchItem = {
   id: string;
-  type: "page" | "client" | "contact" | "location" | "employee" | "work_order";
+  type: "page" | "client" | "contact" | "location" | "employee" | "work_order" | "checklist";
   title: string;
   subtitle?: string;
   href: string;
@@ -261,6 +265,82 @@ export async function GET(request: Request) {
         : [];
 
     groups.push({ label: "Work orders", items: [...viewAllItem, ...workOrderItems] });
+  }
+
+  const checklistCustomer = alias(user, "checklistCustomer");
+  const checklistTechnician = alias(user, "checklistTechnician");
+
+  const checklistSearchWhere = checklistPortalSearchConditions(
+    pattern,
+    checklistCustomer.name,
+    checklistTechnician.name
+  );
+
+  const [checklistCountRow] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(checklist)
+    .innerJoin(checklistCustomer, eq(checklist.customerId, checklistCustomer.id))
+    .innerJoin(checklistTechnician, eq(checklist.technicianId, checklistTechnician.id))
+    .where(checklistSearchWhere);
+
+  const checklistMatchCount = Number(checklistCountRow?.count ?? 0);
+
+  const matchedChecklists = await db
+    .select({
+      id: checklist.id,
+      formData: checklist.formData,
+      createdAt: checklist.createdAt,
+      customerName: checklistCustomer.name,
+      technicianName: checklistTechnician.name,
+    })
+    .from(checklist)
+    .innerJoin(checklistCustomer, eq(checklist.customerId, checklistCustomer.id))
+    .innerJoin(checklistTechnician, eq(checklist.technicianId, checklistTechnician.id))
+    .where(checklistSearchWhere)
+    .orderBy(desc(checklist.createdAt))
+    .limit(LIMIT);
+
+  const checklistItems = matchedChecklists.map((row) => {
+    let dateIso = "";
+    let equipmentType = "";
+    try {
+      const data = JSON.parse(row.formData) as Record<string, unknown>;
+      dateIso = parseWorkOrderDateToIso(data.dateOfService);
+      equipmentType = String(data.equipmentType ?? "").trim();
+    } catch {
+      /* ignore */
+    }
+    const typeLabel =
+      equipmentType === "lift" ? "Lift" : equipmentType === "stretcher" ? "Stretcher" : "COTMEDIC";
+    return {
+      id: `checklist:${row.id}`,
+      type: "checklist" as const,
+      title: `${row.customerName} · ${typeLabel}`,
+      subtitle: describeChecklistSearchMatch(q, {
+        customerName: row.customerName ?? "—",
+        technicianName: row.technicianName ?? "—",
+        formData: row.formData,
+        workDateIso: dateIso,
+      }),
+      href: `/portal/checklist/${row.id}`,
+    };
+  });
+
+  if (checklistItems.length > 0) {
+    const viewAllItem =
+      checklistMatchCount >= 2
+        ? [
+            {
+              id: `checklists_q:${q}`,
+              type: "page" as const,
+              title: `View all ${checklistMatchCount} checklists matching “${q}”`,
+              subtitle: "Filtered checklist list",
+              href: `/portal/checklist?q=${encodeURIComponent(q)}`,
+            },
+          ]
+        : [];
+
+    groups.push({ label: "Checklists", items: [...viewAllItem, ...checklistItems] });
   }
 
   return NextResponse.json({ groups });

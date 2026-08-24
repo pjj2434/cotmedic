@@ -11,6 +11,7 @@ export type ChecklistFormData = {
   problemDescription?: string;
   repairNotes?: string;
   serialNumber?: string;
+  equipmentType?: string;
   productName?: string;
   modelNumber?: string;
   checklist?: Array<{
@@ -56,7 +57,7 @@ const checklistStyles = `
   .checklist-form-view .section-rule { border: 0; border-top: 2px solid #dc2626; margin: 0 0 16px; }
   .checklist-form-view .field-grid { display: grid; gap: 12px 16px; }
   .checklist-form-view .field-grid.cols-2 { grid-template-columns: 1fr 1fr; }
-  .checklist-form-view .field-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .checklist-form-view .field-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
   .checklist-form-view .field-grid .span-2 { grid-column: span 2; }
   .checklist-form-view .field-label { font-weight: 700; color: #262626; font-size: 13px; }
   .checklist-form-view .field-value { margin-top: 2px; color: #404040; font-size: 13px; white-space: pre-wrap; }
@@ -142,7 +143,8 @@ const checklistStyles = `
 
   @media (max-width: 640px) {
     .checklist-form-view .field-grid.cols-2,
-    .checklist-form-view .field-grid.cols-3 { grid-template-columns: 1fr; }
+    .checklist-form-view .field-grid.cols-3,
+    .checklist-form-view .field-grid.cols-4 { grid-template-columns: 1fr; }
     .checklist-form-view .field-grid .span-2 { grid-column: auto; }
     .checklist-form-view .center { text-align: left; }
   }
@@ -195,9 +197,16 @@ export function ChecklistFormView({
             <section className="section">
               <h2 className="section-title">Asset Information</h2>
               <hr className="section-rule" />
-              <div className="field-grid cols-3">
+              <div className="field-grid cols-4">
                 <Field label="Serial Number" center>
                   {formData.serialNumber || "—"}
+                </Field>
+                <Field label="Type" center>
+                  {formData.equipmentType === "lift"
+                    ? "Lift"
+                    : formData.equipmentType === "stretcher"
+                      ? "Stretcher"
+                      : "—"}
                 </Field>
                 <Field label="Product Name" center>
                   {formData.productName || "—"}

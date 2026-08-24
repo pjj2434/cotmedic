@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { withAuth } from "@/lib/with-auth";
 import { ChecklistClient } from "./checklist-client";
 
@@ -8,10 +9,14 @@ export default async function ChecklistPage() {
   });
 
   return (
-    <ChecklistClient
-      role={role}
-      userId={user.id}
-      technicianName={user.name}
-    />
+    <Suspense
+      fallback={<p className="p-6 text-sm text-zinc-500">Loading checklists…</p>}
+    >
+      <ChecklistClient
+        role={role}
+        userId={user.id}
+        technicianName={user.name}
+      />
+    </Suspense>
   );
 }

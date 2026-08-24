@@ -13,14 +13,25 @@ function parseChecklistMeta(formData: string) {
   try {
     const data = JSON.parse(formData) as Record<string, unknown>;
     const dateIso = parseWorkOrderDateToIso(data.dateOfService);
+    const equipmentType =
+      data.equipmentType === "lift" || data.equipmentType === "stretcher"
+        ? data.equipmentType
+        : "";
     return {
       dateIso,
       dateLabel: dateIso ? formatCalendarIsoDate(dateIso) : "—",
       serialNumber: typeof data.serialNumber === "string" ? data.serialNumber.trim() : "",
+      equipmentType,
       workOrderType: typeof data.workOrderType === "string" ? data.workOrderType.trim() : "",
     };
   } catch {
-    return { dateIso: "", dateLabel: "—", serialNumber: "", workOrderType: "" };
+    return {
+      dateIso: "",
+      dateLabel: "—",
+      serialNumber: "",
+      equipmentType: "",
+      workOrderType: "",
+    };
   }
 }
 
@@ -100,6 +111,7 @@ export async function GET(request: Request) {
       workDateIso: meta.dateIso,
       workDateLabel: meta.dateLabel,
       serialNumber: meta.serialNumber,
+      equipmentType: meta.equipmentType,
       workOrderType: meta.workOrderType,
     };
   });
@@ -211,4 +223,56 @@ export async function DELETE(request: Request) {
 
   await db.delete(checklist).where(eq(checklist.id, id));
   return NextResponse.json({ success: true });
+}
+
+/** PATCH - Update checklist form data. Owners only. */
+export async function PATCH(request: Request) {
+  const authResult = await withAuthApi({ roles: ["owner"] });
+  if (authResult instanceof NextResponse) return authResult;
+
+  let body: { id: string; formData?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const id = String(body.id ?? "").trim();
+  if (!id || body.formData == null) {
+    return NextResponse.json({ error: "id and formData are required" }, { status: 400 });
+  }
+
+  const dateOfService =
+    typeof body.formData === "object" && body.formData && "dateOfService" in body.formData
+      ? parseWorkOrderDateToIso((body.formData as Record<string, unknown>).dateOfService)
+      : "";
+  if (!dateOfService) {
+    return NextResponse.json({ error: "Date of service is required" }, { status: 400 });
+  }
+
+  const equipmentType =
+    typeof body.formData === "object" &&
+    body.formData &&
+    "equipmentType" in body.formData &&
+    ((body.formData as Record<string, unknown>).equipmentType === "lift" ||
+      (body.formData as Record<string, unknown>).equipmentType === "stretcher")
+      ? (body.formData as Record<string, unknown>).equipmentType
+      : "";
+  if (!equipmentType) {
+    return NextResponse.json({ error: "equipmentType must be stretcher or lift" }, { status: 400 });
+  }
+
+  const [row] = await db.select({ id: checklist.id }).from(checklist).where(eq(checklist.id, id)).limit(1);
+  if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const now = new Date().toISOString();
+  await db
+    .update(checklist)
+    .set({
+      formData: JSON.stringify(body.formData),
+      updatedAt: now,
+    })
+    .where(eq(checklist.id, id));
+
+  return NextResponse.json({ id, success: true });
 }

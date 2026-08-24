@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   BarChart3,
   Building2,
+  ClipboardCheck,
   ClipboardList,
   Database,
   LayoutDashboard,
@@ -41,6 +42,8 @@ function itemIcon(type: PortalSearchItem["type"]) {
       return Users;
     case "work_order":
       return ClipboardList;
+    case "checklist":
+      return ClipboardCheck;
     default:
       return Search;
   }
@@ -185,7 +188,7 @@ export function OwnerPortalSearch() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search clients, locations, work orders…"
+                placeholder="Search clients, serials, checklists, work orders…"
                 className="h-11 border-zinc-200 bg-zinc-50 pl-9 text-base"
                 autoComplete="off"
                 autoCorrect="off"
@@ -267,7 +270,7 @@ export function OwnerPortalSearch() {
           <div className="flex items-center gap-2 border-t border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500">
             <Wrench className="size-3.5 shrink-0" />
             <BarChart3 className="size-3.5 shrink-0" />
-            <span>Search across dashboard, CRM, locations, team, and work orders</span>
+            <span>Search across dashboard, CRM, locations, team, work orders, and checklists</span>
           </div>
         </DialogContent>
       </Dialog>
