@@ -33,9 +33,125 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "@/components/ui/combobox";
 import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, Pencil } from "lucide-react";
 import { parseManagedLocationIds } from "@/lib/portal-access";
 import { toast } from "sonner";
+
+type LocationOption = { id: string; name: string };
+
+function LocationPicker({
+  locations,
+  valueId,
+  onChange,
+  placeholder = "Search location…",
+}: {
+  locations: LocationOption[];
+  valueId: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+}) {
+  const value = locations.find((l) => l.id === valueId) ?? null;
+  return (
+    <Combobox
+      items={locations}
+      value={value}
+      onValueChange={(v) => onChange((v as LocationOption | null)?.id ?? "")}
+      itemToStringLabel={(l) => (l as LocationOption).name}
+      isItemEqualToValue={(a, b) => (a as LocationOption)?.id === (b as LocationOption)?.id}
+    >
+      <ComboboxInput
+        className="w-full"
+        placeholder={locations.length === 0 ? "No locations yet" : placeholder}
+        disabled={locations.length === 0}
+        showClear={!!value}
+      />
+      <ComboboxContent>
+        <ComboboxEmpty>No location found.</ComboboxEmpty>
+        <ComboboxList>
+          {(item) => (
+            <ComboboxItem
+              key={(item as LocationOption).id}
+              value={item as LocationOption}
+            >
+              {(item as LocationOption).name}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
+function LocationsMultiPicker({
+  locations,
+  valueIds,
+  onChange,
+}: {
+  locations: LocationOption[];
+  valueIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const anchor = useComboboxAnchor();
+  const value = locations.filter((l) => valueIds.includes(l.id));
+  return (
+    <Combobox
+      multiple
+      items={locations}
+      value={value}
+      onValueChange={(v) =>
+        onChange(((v as LocationOption[] | null) ?? []).map((l) => l.id))
+      }
+      itemToStringLabel={(l) => (l as LocationOption).name}
+      isItemEqualToValue={(a, b) => (a as LocationOption)?.id === (b as LocationOption)?.id}
+    >
+      <ComboboxChips ref={anchor} className="w-full min-h-9">
+        <ComboboxValue>
+          {(selected: LocationOption[]) =>
+            (Array.isArray(selected) ? selected : []).map((loc) => (
+              <ComboboxChip key={loc.id}>{loc.name}</ComboboxChip>
+            ))
+          }
+        </ComboboxValue>
+        <ComboboxChipsInput
+          placeholder={
+            locations.length === 0
+              ? "No locations yet"
+              : value.length > 0
+                ? "Add another…"
+                : "Search locations…"
+          }
+          disabled={locations.length === 0}
+        />
+      </ComboboxChips>
+      <ComboboxContent anchor={anchor}>
+        <ComboboxEmpty>No location found.</ComboboxEmpty>
+        <ComboboxList>
+          {(item) => (
+            <ComboboxItem
+              key={(item as LocationOption).id}
+              value={item as LocationOption}
+            >
+              {(item as LocationOption).name}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
 
 const INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -212,7 +328,7 @@ export function CustomersClient() {
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removeUser, setRemoveUser] = useState<User | null>(null);
   const [removeLoading, setRemoveLoading] = useState(false);
-  const [locationOptions, setLocationOptions] = useState<{ id: string; name: string }[]>([]);
+  const [locationOptions, setLocationOptions] = useState<LocationOption[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editKind, setEditKind] = useState<AccountKind>("location");
@@ -852,24 +968,6 @@ export function CustomersClient() {
     }
   }
 
-  function toggleAdminLocation(id: string, checked: boolean) {
-    setCreateForm((p) => {
-      const set = new Set(p.adminLocationIds);
-      if (checked) set.add(id);
-      else set.delete(id);
-      return { ...p, adminLocationIds: [...set] };
-    });
-  }
-
-  function toggleEditAdminLocation(id: string, checked: boolean) {
-    setEditAdminLocationIds((prev) => {
-      const set = new Set(prev);
-      if (checked) set.add(id);
-      else set.delete(id);
-      return [...set];
-    });
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1128,47 +1226,25 @@ export function CustomersClient() {
             {createForm.accountKind === "employee" && (
               <div className="space-y-2">
                 <Label>Location</Label>
-                <Select
-                  value={createForm.employeeLocationId || "__none__"}
-                  onValueChange={(v) =>
-                    setCreateForm((p) => ({
-                      ...p,
-                      employeeLocationId: v === "__none__" ? "" : v,
-                    }))
+                <LocationPicker
+                  locations={locationOptions}
+                  valueId={createForm.employeeLocationId}
+                  onChange={(id) =>
+                    setCreateForm((p) => ({ ...p, employeeLocationId: id }))
                   }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select location…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Select…</SelectItem>
-                    {locationOptions.map((loc) => (
-                      <SelectItem key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
             )}
             {createForm.accountKind === "administrator" && (
               <div className="space-y-2">
                 <Label>Locations</Label>
-                <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-zinc-200 p-3">
-                  {locationOptions.length === 0 ? (
-                    <p className="text-sm text-zinc-500">Create at least one location first.</p>
-                  ) : (
-                    locationOptions.map((loc) => (
-                      <label key={loc.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={createForm.adminLocationIds.includes(loc.id)}
-                          onCheckedChange={(c) => toggleAdminLocation(loc.id, c === true)}
-                        />
-                        <span>{loc.name}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
+                <LocationsMultiPicker
+                  locations={locationOptions}
+                  valueIds={createForm.adminLocationIds}
+                  onChange={(ids) =>
+                    setCreateForm((p) => ({ ...p, adminLocationIds: ids }))
+                  }
+                />
               </div>
             )}
             {(createForm.accountKind !== "location" || createForm.createLoginNow) && (
@@ -1349,42 +1425,21 @@ export function CustomersClient() {
             {editKind === "employee" && (
               <div className="space-y-2">
                 <Label>Location</Label>
-                <Select
-                  value={editEmployeeLocationId || "__none__"}
-                  onValueChange={(v) => setEditEmployeeLocationId(v === "__none__" ? "" : v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select location…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Select…</SelectItem>
-                    {locationOptions.map((loc) => (
-                      <SelectItem key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <LocationPicker
+                  locations={locationOptions}
+                  valueId={editEmployeeLocationId}
+                  onChange={setEditEmployeeLocationId}
+                />
               </div>
             )}
             {editKind === "administrator" && (
               <div className="space-y-2">
                 <Label>Locations</Label>
-                <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border border-zinc-200 p-3">
-                  {locationOptions.length === 0 ? (
-                    <p className="text-sm text-zinc-500">No locations yet.</p>
-                  ) : (
-                    locationOptions.map((loc) => (
-                      <label key={loc.id} className="flex cursor-pointer items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={editAdminLocationIds.includes(loc.id)}
-                          onCheckedChange={(c) => toggleEditAdminLocation(loc.id, c === true)}
-                        />
-                        <span>{loc.name}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
+                <LocationsMultiPicker
+                  locations={locationOptions}
+                  valueIds={editAdminLocationIds}
+                  onChange={setEditAdminLocationIds}
+                />
               </div>
             )}
             <DialogFooter>
