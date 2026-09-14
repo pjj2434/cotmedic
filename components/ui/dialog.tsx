@@ -47,11 +47,23 @@ function DialogOverlay({
   )
 }
 
+function isPortaledPickerTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false
+  return Boolean(
+    target.closest(
+      '[data-slot="combobox-content"], [data-slot="combobox-list"], [data-slot="combobox-item"], [data-slot="select-content"], [data-slot="select-item"]'
+    )
+  )
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
   closeButtonClassName,
+  onPointerDownOutside,
+  onInteractOutside,
+  onFocusOutside,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -67,6 +79,24 @@ function DialogContent({
           className
         )}
         {...props}
+        onPointerDownOutside={(event) => {
+          if (isPortaledPickerTarget(event.target)) {
+            event.preventDefault()
+          }
+          onPointerDownOutside?.(event)
+        }}
+        onInteractOutside={(event) => {
+          if (isPortaledPickerTarget(event.target)) {
+            event.preventDefault()
+          }
+          onInteractOutside?.(event)
+        }}
+        onFocusOutside={(event) => {
+          if (isPortaledPickerTarget(event.target)) {
+            event.preventDefault()
+          }
+          onFocusOutside?.(event)
+        }}
       >
         {children}
         {showCloseButton && (

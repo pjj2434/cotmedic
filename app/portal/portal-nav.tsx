@@ -26,6 +26,11 @@ const allNavItems = [
   },
   { href: "/portal/files", label: "Files", roles: ["client", "employee", "administrator"] },
   {
+    href: "/portal/reports",
+    label: "Reports",
+    roles: ["client", "employee", "administrator"],
+  },
+  {
     href: "/portal/settings/password",
     label: "Settings",
     roles: ["client", "employee", "administrator", "technician"],

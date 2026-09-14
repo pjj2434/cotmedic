@@ -35,18 +35,13 @@ import {
 } from "@/components/ui/select";
 import {
   Combobox,
-  ComboboxChip,
-  ComboboxChips,
-  ComboboxChipsInput,
   ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-  ComboboxValue,
-  useComboboxAnchor,
 } from "@/components/ui/combobox";
-import { Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, Pencil } from "lucide-react";
+import { Check, Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, Pencil } from "lucide-react";
 import { parseManagedLocationIds } from "@/lib/portal-access";
 import { toast } from "sonner";
 
@@ -95,6 +90,7 @@ function LocationPicker({
   );
 }
 
+/** Inline searchable multi-select — avoids portaled combobox click issues inside dialogs. */
 function LocationsMultiPicker({
   locations,
   valueIds,
@@ -104,52 +100,95 @@ function LocationsMultiPicker({
   valueIds: string[];
   onChange: (ids: string[]) => void;
 }) {
-  const anchor = useComboboxAnchor();
-  const value = locations.filter((l) => valueIds.includes(l.id));
+  const [query, setQuery] = useState("");
+  const selected = locations.filter((l) => valueIds.includes(l.id));
+  const filtered = locations.filter((l) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return l.name.toLowerCase().includes(q);
+  });
+
+  function toggle(id: string) {
+    const set = new Set(valueIds);
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
+    onChange([...set]);
+  }
+
+  function remove(id: string) {
+    onChange(valueIds.filter((x) => x !== id));
+  }
+
   return (
-    <Combobox
-      multiple
-      items={locations}
-      value={value}
-      onValueChange={(v) =>
-        onChange(((v as LocationOption[] | null) ?? []).map((l) => l.id))
-      }
-      itemToStringLabel={(l) => (l as LocationOption).name}
-      isItemEqualToValue={(a, b) => (a as LocationOption)?.id === (b as LocationOption)?.id}
-    >
-      <ComboboxChips ref={anchor} className="w-full min-h-9">
-        <ComboboxValue>
-          {(selected: LocationOption[]) =>
-            (Array.isArray(selected) ? selected : []).map((loc) => (
-              <ComboboxChip key={loc.id}>{loc.name}</ComboboxChip>
-            ))
-          }
-        </ComboboxValue>
-        <ComboboxChipsInput
-          placeholder={
-            locations.length === 0
-              ? "No locations yet"
-              : value.length > 0
-                ? "Add another…"
-                : "Search locations…"
-          }
-          disabled={locations.length === 0}
-        />
-      </ComboboxChips>
-      <ComboboxContent anchor={anchor}>
-        <ComboboxEmpty>No location found.</ComboboxEmpty>
-        <ComboboxList>
-          {(item) => (
-            <ComboboxItem
-              key={(item as LocationOption).id}
-              value={item as LocationOption}
+    <div className="space-y-2">
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((loc) => (
+            <span
+              key={loc.id}
+              className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-800"
             >
-              {(item as LocationOption).name}
-            </ComboboxItem>
-          )}
-        </ComboboxList>
-      </ComboboxContent>
-    </Combobox>
+              {loc.name}
+              <button
+                type="button"
+                className="rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+                aria-label={`Remove ${loc.name}`}
+                onClick={() => remove(loc.id)}
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-zinc-400" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={locations.length === 0 ? "No locations yet" : "Search locations…"}
+          disabled={locations.length === 0}
+          className="h-9 pl-8"
+        />
+      </div>
+      <div className="max-h-44 overflow-y-auto rounded-lg border border-zinc-200 bg-white">
+        {locations.length === 0 ? (
+          <p className="px-3 py-4 text-sm text-zinc-500">Create at least one location first.</p>
+        ) : filtered.length === 0 ? (
+          <p className="px-3 py-4 text-sm text-zinc-500">No location found.</p>
+        ) : (
+          <ul className="py-1">
+            {filtered.map((loc) => {
+              const isOn = valueIds.includes(loc.id);
+              return (
+                <li key={loc.id}>
+                  <button
+                    type="button"
+                    onClick={() => toggle(loc.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors",
+                      isOn ? "bg-red-50 text-zinc-900" : "text-zinc-800 hover:bg-zinc-50"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded border",
+                        isOn
+                          ? "border-red-600 bg-red-600 text-white"
+                          : "border-zinc-300 bg-white"
+                      )}
+                    >
+                      {isOn ? <Check className="size-3" strokeWidth={3} /> : null}
+                    </span>
+                    <span className="min-w-0 truncate">{loc.name}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
