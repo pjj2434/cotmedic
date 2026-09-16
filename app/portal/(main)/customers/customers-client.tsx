@@ -33,20 +33,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/components/ui/combobox";
 import { Check, Search, UserPlus, RotateCcw, X, Lock, Unlock, Trash2, Pencil } from "lucide-react";
 import { parseManagedLocationIds } from "@/lib/portal-access";
 import { toast } from "sonner";
 
 type LocationOption = { id: string; name: string };
 
+/** Inline searchable single-select — avoids portaled combobox click issues inside dialogs. */
 function LocationPicker({
   locations,
   valueId,
@@ -58,35 +51,104 @@ function LocationPicker({
   onChange: (id: string) => void;
   placeholder?: string;
 }) {
-  const value = locations.find((l) => l.id === valueId) ?? null;
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(() => !valueId);
+  const selected = locations.find((l) => l.id === valueId) ?? null;
+  const filtered = locations.filter((l) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return l.name.toLowerCase().includes(q);
+  });
+
+  function select(id: string) {
+    onChange(id);
+    setQuery("");
+    setOpen(false);
+  }
+
+  function clear() {
+    onChange("");
+    setQuery("");
+    setOpen(true);
+  }
+
   return (
-    <Combobox
-      items={locations}
-      value={value}
-      onValueChange={(v) => onChange((v as LocationOption | null)?.id ?? "")}
-      itemToStringLabel={(l) => (l as LocationOption).name}
-      isItemEqualToValue={(a, b) => (a as LocationOption)?.id === (b as LocationOption)?.id}
-    >
-      <ComboboxInput
-        className="w-full"
-        placeholder={locations.length === 0 ? "No locations yet" : placeholder}
-        disabled={locations.length === 0}
-        showClear={!!value}
-      />
-      <ComboboxContent>
-        <ComboboxEmpty>No location found.</ComboboxEmpty>
-        <ComboboxList>
-          {(item) => (
-            <ComboboxItem
-              key={(item as LocationOption).id}
-              value={item as LocationOption}
+    <div className="space-y-2">
+      {selected && (
+        <div className="flex flex-wrap gap-1.5">
+          <span className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-800">
+            {selected.name}
+            <button
+              type="button"
+              className="rounded p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900"
+              aria-label={`Clear ${selected.name}`}
+              onClick={clear}
             >
-              {(item as LocationOption).name}
-            </ComboboxItem>
+              <X className="size-3" />
+            </button>
+          </span>
+        </div>
+      )}
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-zinc-400" />
+        <Input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder={
+            locations.length === 0
+              ? "No locations yet"
+              : selected && !open
+                ? "Search to change…"
+                : placeholder
+          }
+          disabled={locations.length === 0}
+          className="h-9 pl-8"
+        />
+      </div>
+      {open && (
+        <div className="max-h-44 overflow-y-auto rounded-lg border border-zinc-200 bg-white">
+          {locations.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-zinc-500">Create at least one location first.</p>
+          ) : filtered.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-zinc-500">No location found.</p>
+          ) : (
+            <ul className="py-1">
+              {filtered.map((loc) => {
+                const isOn = loc.id === valueId;
+                return (
+                  <li key={loc.id}>
+                    <button
+                      type="button"
+                      onClick={() => select(loc.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors",
+                        isOn ? "bg-red-50 text-zinc-900" : "text-zinc-800 hover:bg-zinc-50"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex size-4 shrink-0 items-center justify-center rounded border",
+                          isOn
+                            ? "border-red-600 bg-red-600 text-white"
+                            : "border-zinc-300 bg-white"
+                        )}
+                      >
+                        {isOn ? <Check className="size-3" strokeWidth={3} /> : null}
+                      </span>
+                      <span className="min-w-0 truncate">{loc.name}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
-        </ComboboxList>
-      </ComboboxContent>
-    </Combobox>
+        </div>
+      )}
+    </div>
   );
 }
 
