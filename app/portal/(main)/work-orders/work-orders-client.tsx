@@ -45,6 +45,8 @@ import {
   workOrderMatchesSearchQuery,
   WORK_ORDER_SEARCH_QUERY_PARAM,
 } from "@/lib/work-order-search";
+import { parseWorkOrderStatus, type WorkOrderStatus } from "@/lib/work-order-status";
+import { WorkOrderStatusBadge } from "@/components/work-order-status-toggle";
 import { isLocationPortalRole } from "@/lib/portal-roles";
 import {
   Dialog,
@@ -119,6 +121,7 @@ type ParsedWorkOrderFields = {
   extraDetails: string;
   adjusted: string;
   lockBarReplaced: string;
+  workOrderStatus: WorkOrderStatus | null;
 };
 
 function formatYesNo(value: unknown): string {
@@ -171,6 +174,7 @@ function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
       extraDetails: detailPairs.join(" | "),
       adjusted,
       lockBarReplaced,
+      workOrderStatus: parseWorkOrderStatus(data.workOrderStatus),
     };
   } catch {
     return {
@@ -183,6 +187,7 @@ function extractSearchFields(order: WorkOrder): ParsedWorkOrderFields {
       extraDetails: "",
       adjusted: "—",
       lockBarReplaced: "—",
+      workOrderStatus: null,
     };
   }
 }
@@ -704,7 +709,7 @@ function WorkOrderListRowWithOptionalFileDrop({
               Submitted by: {o.submittedByName ?? "—"}
             </p>
           )}
-          <div className="mt-1">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <span
               className={cn(
                 "inline-flex items-center rounded-md px-2 py-0.5 font-medium",
@@ -715,6 +720,7 @@ function WorkOrderListRowWithOptionalFileDrop({
             >
               Serial: {serialLabel}
             </span>
+            <WorkOrderStatusBadge status={parsedFields.workOrderStatus} />
           </div>
           {showOwnerStyleFilters && !o.hasFiles && (
             <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-700">

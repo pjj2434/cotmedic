@@ -28,15 +28,18 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/components/ui/combobox";
-import { Printer, ArrowLeft, FileText, Image, Trash2, Pencil } from "lucide-react";
+import { Printer, ArrowLeft, FileText, Image, Trash2, Pencil, ClipboardCheck, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { WorkOrderFormView } from "@/components/work-order-form-view";
+import { WorkOrderChecklistDialog } from "@/components/work-order-checklist-dialog";
 import { printWorkOrderContent } from "@/lib/print-work-order";
 import { UploadDropzone } from "@/lib/uploadthing";
 import { toast } from "sonner";
 import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
 import { cn } from "@/lib/utils";
 import { isLocationPortalRole } from "@/lib/portal-roles";
+import { parseWorkOrderDateToIso } from "@/lib/work-order-date";
+import { parseWorkOrderFormSearchFields } from "@/lib/work-order-search";
 
 type WorkOrder = {
   id: string;
@@ -62,6 +65,34 @@ type WorkOrderFile = {
 
 type Customer = { id: string; name: string; customerType?: string };
 
+type LinkedChecklist = {
+  id: string;
+  type: string;
+  workDateLabel?: string;
+  serialNumber?: string;
+  technicianName?: string;
+};
+
+function parseWorkOrderPrefill(formData: string) {
+  try {
+    const data = JSON.parse(formData) as Record<string, unknown>;
+    const { serial } = parseWorkOrderFormSearchFields(formData);
+    return {
+      serialNumber: serial,
+      modelNumber: String(data.model ?? "").trim(),
+      productName: String(data.make ?? data.model ?? "").trim(),
+      dateOfService: parseWorkOrderDateToIso(data.date) || String(data.date ?? "").trim(),
+    };
+  } catch {
+    return {
+      serialNumber: "",
+      modelNumber: "",
+      productName: "",
+      dateOfService: "",
+    };
+  }
+}
+
 export function WorkOrderViewClient({
   id,
   role,
@@ -85,8 +116,14 @@ export function WorkOrderViewClient({
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [deleteWorkOrderOpen, setDeleteWorkOrderOpen] = useState(false);
   const [deletingWorkOrder, setDeletingWorkOrder] = useState(false);
+  const [linkedChecklists, setLinkedChecklists] = useState<LinkedChecklist[]>([]);
+  const [checklistsLoading, setChecklistsLoading] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
 
   const canExpandPreview = role === "owner" || isLocationPortalRole(role);
+  const canSeeChecklists =
+    role === "owner" || role === "client" || role === "employee" || role === "administrator";
+  const canAddChecklist = role === "owner";
 
   const reloadWorkOrder = useCallback(async () => {
     const res = await fetch(`/api/work-orders?id=${encodeURIComponent(id)}`);
@@ -144,6 +181,29 @@ export function WorkOrderViewClient({
   useEffect(() => {
     fetchFiles();
   }, [fetchFiles]);
+
+  const fetchLinkedChecklists = useCallback(async () => {
+    if (!canSeeChecklists) return;
+    setChecklistsLoading(true);
+    try {
+      const res = await fetch(
+        `/api/checklists?workOrderId=${encodeURIComponent(id)}`
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        checklists?: LinkedChecklist[];
+      };
+      if (!res.ok) throw new Error("Failed to load checklists");
+      setLinkedChecklists(Array.isArray(data.checklists) ? data.checklists : []);
+    } catch {
+      setLinkedChecklists([]);
+    } finally {
+      setChecklistsLoading(false);
+    }
+  }, [canSeeChecklists, id]);
+
+  useEffect(() => {
+    void fetchLinkedChecklists();
+  }, [fetchLinkedChecklists]);
 
   const handlePrint = () => {
     if (printContentRef.current && workOrder) printWorkOrderContent(printContentRef.current);
@@ -282,6 +342,17 @@ export function WorkOrderViewClient({
           )}
         </div>
       </div>
+      {canExpandPreview && (
+        <p className="mb-2 px-2 text-center text-xs text-zinc-500 sm:px-3">
+          Tap or click preview to enlarge
+        </p>
+      )}
+      {role === "owner" && (
+        <div className="mx-2 mb-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700 shadow-sm sm:mx-3">
+          <span className="font-medium text-zinc-900">Submitted by: </span>
+          {workOrder.submittedByName ?? "—"}
+        </div>
+      )}
       <div
         ref={printContentRef}
         className={cn(
@@ -301,19 +372,61 @@ export function WorkOrderViewClient({
           }
         }}
       >
-        {canExpandPreview && (
-          <p className="mb-2 text-center text-xs text-zinc-500">
-            Tap or click preview to enlarge
-          </p>
-        )}
-        {role === "owner" && (
-          <div className="mb-3 rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-700 shadow-sm">
-            <span className="font-medium text-zinc-900">Submitted by: </span>
-            {workOrder.submittedByName ?? "—"}
-          </div>
-        )}
         <WorkOrderFormView type={workOrder.type} formData={workOrder.formData} compact />
       </div>
+
+      {canSeeChecklists && (
+        <div className="mx-2 mb-4 rounded-md border border-zinc-200 bg-white shadow-sm sm:mx-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 px-3 py-2.5">
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight text-zinc-900">Checklists</h2>
+              <p className="text-xs text-zinc-500">Linked to this work order</p>
+            </div>
+            {canAddChecklist && (workOrder.type === "cot" || workOrder.type === "lift") && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setChecklistOpen(true)}
+              >
+                <ClipboardCheck className="mr-1.5 size-3.5" />
+                Add checklist
+              </Button>
+            )}
+          </div>
+          {checklistsLoading ? (
+            <p className="px-3 py-4 text-sm text-zinc-500">Loading…</p>
+          ) : linkedChecklists.length === 0 ? (
+            <p className="px-3 py-4 text-sm text-zinc-500">
+              No checklist linked yet.
+              {canAddChecklist ? " Use Add checklist or the Checklist button on Edit." : ""}
+            </p>
+          ) : (
+            <ul className="divide-y divide-zinc-100">
+              {linkedChecklists.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    href={`/portal/checklist/${item.id}`}
+                    className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-zinc-50"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-zinc-900">
+                        {item.type === "lift" ? "Lift Medik" : "Cot Medik"} checklist
+                        {item.serialNumber ? ` · ${item.serialNumber}` : ""}
+                      </p>
+                      <p className="truncate text-xs text-zinc-500">
+                        {item.workDateLabel ?? "—"}
+                        {item.technicianName ? ` · ${item.technicianName}` : ""}
+                      </p>
+                    </div>
+                    <ChevronRight className="size-4 shrink-0 text-zinc-400" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {canEditCustomer && (workOrder.type === "cot" || workOrder.type === "lift") && (
         <div className="mx-2 mb-4 rounded-md border border-zinc-200 bg-white p-3 shadow-sm sm:mx-3">
@@ -478,6 +591,25 @@ export function WorkOrderViewClient({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {canAddChecklist &&
+        workOrder &&
+        (workOrder.type === "cot" || workOrder.type === "lift") && (
+          <WorkOrderChecklistDialog
+            open={checklistOpen}
+            onOpenChange={(open) => {
+              setChecklistOpen(open);
+              if (!open) void fetchLinkedChecklists();
+            }}
+            type={workOrder.type}
+            techId={workOrder.technicianId}
+            techName={workOrder.technicianName}
+            customerId={workOrder.customerId}
+            customerName={workOrder.customerName}
+            prefill={parseWorkOrderPrefill(workOrder.formData)}
+            workOrderId={workOrder.id}
+          />
+        )}
     </div>
   );
 }

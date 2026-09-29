@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { withAuthApi } from "@/lib/with-auth";
 import { db } from "@/db";
@@ -24,6 +24,7 @@ function parseChecklistMeta(formData: string) {
       equipmentType,
       workOrderType: typeof data.workOrderType === "string" ? data.workOrderType.trim() : "",
       variant: typeof data.variant === "string" ? data.variant : "",
+      workOrderId: typeof data.workOrderId === "string" ? data.workOrderId.trim() : "",
     };
   } catch {
     return {
@@ -33,6 +34,7 @@ function parseChecklistMeta(formData: string) {
       equipmentType: "",
       workOrderType: "",
       variant: "",
+      workOrderId: "",
     };
   }
 }
@@ -64,10 +66,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");
   const type = searchParams.get("type") as WorkType | null;
+  const workOrderId = searchParams.get("workOrderId")?.trim() ?? "";
 
   const conditions: SQL[] = [];
   if (id) conditions.push(eq(checklist.id, id));
   if (type === "cot" || type === "lift") conditions.push(eq(checklist.type, type));
+  if (workOrderId) {
+    conditions.push(
+      sql`lower(coalesce(json_extract(${checklist.formData}, '$.workOrderId'), '')) = ${workOrderId.toLowerCase()}`
+    );
+  }
   if (role === "technician") conditions.push(eq(checklist.technicianId, authUser.id));
   if (role === "client" || role === "employee" || role === "administrator") {
     const scopeResult = appendChecklistCustomerScope(role, authUser, conditions);
@@ -115,6 +123,7 @@ export async function GET(request: Request) {
       serialNumber: meta.serialNumber,
       equipmentType: meta.equipmentType,
       workOrderType: meta.workOrderType,
+      workOrderId: meta.workOrderId || null,
     };
   });
 

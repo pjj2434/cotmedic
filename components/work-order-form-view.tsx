@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { parseWorkOrderStatus } from "@/lib/work-order-status";
+import { WorkOrderStatusBadge } from "@/components/work-order-status-toggle";
 
 const WorkOrderFormCompactContext = React.createContext(false);
 
@@ -19,6 +21,7 @@ const compactPreviewCss = `
     .wo-form-view.wo-form-view--compact .logo-mark { padding: 4px 6px; }
     .wo-form-view.wo-form-view--compact .logo-mark img { height: 26px !important; width: auto !important; }
     .wo-form-view.wo-form-view--compact .form-body { padding: 12px 14px; }
+    .wo-form-view.wo-form-view--compact .status-badge-row { padding: 8px 14px 0; }
     .wo-form-view.wo-form-view--compact .section { margin-bottom: 12px; }
     .wo-form-view.wo-form-view--compact .section-label { margin-bottom: 5px; font-size: 8px; letter-spacing: 2px; }
     .wo-form-view.wo-form-view--compact .section-hint { font-size: 10px; margin: -3px 0 5px; line-height: 1.35; }
@@ -306,6 +309,12 @@ export function CotFormView({ form }: { form: FormData }) {
             <div className="header-badge">PM / Repair Report</div>
           </div>
 
+          {parseWorkOrderStatus(form.workOrderStatus) ? (
+            <div className="status-badge-row px-9 pt-4 max-sm:px-[18px]">
+              <WorkOrderStatusBadge status={parseWorkOrderStatus(form.workOrderStatus)} />
+            </div>
+          ) : null}
+
           <div className="form-body">
             <div className="section">
               <div className="section-label">Identification</div>
@@ -421,6 +430,12 @@ export function LiftFormView({ form }: { form: FormData }) {
             </div>
             <div className="header-badge">PM / Repair Report</div>
           </div>
+
+          {parseWorkOrderStatus(form.workOrderStatus) ? (
+            <div className="status-badge-row px-9 pt-4 max-sm:px-[18px]">
+              <WorkOrderStatusBadge status={parseWorkOrderStatus(form.workOrderStatus)} />
+            </div>
+          ) : null}
 
           <div className="form-body">
             <div className="section">

@@ -4,6 +4,11 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { parseWorkOrderDateToIso } from "@/lib/work-order-date";
+import { parseWorkOrderStatus, type WorkOrderStatus } from "@/lib/work-order-status";
+import { WorkOrderStatusToggle } from "@/components/work-order-status-toggle";
+import { WorkOrderChecklistDialog } from "@/components/work-order-checklist-dialog";
+import { authClient } from "@/lib/auth-client";
+import { ClipboardCheck } from "lucide-react";
 
 const fieldInputClass =
   "w-full min-w-0 max-w-full rounded-[3px] border border-[#d0d0d0] bg-[#f4f4f4] px-3 py-[9px] text-sm text-[#111] outline-none transition-[border-color,box-shadow] focus:border-[#111] focus:shadow-[0_0_0_2px_rgba(0,0,0,0.08)] placeholder:text-[#777] placeholder:opacity-50";
@@ -207,6 +212,8 @@ interface FormState {
   lockBarIssue: string;
   adjusted: boolean | null;
   lockBarReplaced: boolean | null;
+  /** Optional overall status — omit/null on legacy work orders. */
+  workOrderStatus: WorkOrderStatus | null;
   companyName: string;
   authDate: string;
   authorizedPrint: string;
@@ -232,6 +239,7 @@ const initialFormState: FormState = {
   lockBarIssue: "",
   adjusted: null,
   lockBarReplaced: null,
+  workOrderStatus: null,
   companyName: "",
   authDate: "",
   authorizedPrint: "",
@@ -259,6 +267,13 @@ export default function CotMedikRepairFormPage() {
   const isEditMode = Boolean(workOrderId);
   const [loadingExisting, setLoadingExisting] = useState(isEditMode);
   const [chainSaveHint, setChainSaveHint] = useState(false);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [pendingChecklistIds, setPendingChecklistIds] = useState<string[]>([]);
+  const { data: session } = authClient.useSession();
+  const isOwner = (session?.user as { role?: string } | undefined)?.role === "owner";
+  const canOpenChecklist = Boolean(
+    isOwner && customerId && techId && (techName || form.techName).trim()
+  );
 
   useEffect(() => {
     if (techName) setForm((f) => ({ ...f, techName }));
@@ -289,6 +304,9 @@ export default function CotMedikRepairFormPage() {
           ...prev,
           ...parsed,
           date: typeof parsed.date === "string" ? toDateInputValue(parsed.date) : prev.date,
+          workOrderStatus: parseWorkOrderStatus(
+            (parsed as { workOrderStatus?: unknown }).workOrderStatus
+          ),
           partsUsed:
             Array.isArray(parsed.partsUsed) && parsed.partsUsed.length > 0
               ? parsed.partsUsed
@@ -370,6 +388,7 @@ export default function CotMedikRepairFormPage() {
       next.time = now.time;
     }
     setForm(next);
+    setPendingChecklistIds([]);
   };
 
   const handleSubmit = async (options?: { chain?: boolean }) => {
@@ -381,6 +400,10 @@ export default function CotMedikRepairFormPage() {
       date: normalizeDate(form.date),
       time: normalizeTime(form.time),
     };
+    const formDataPayload: Record<string, unknown> = { ...normalizedForm };
+    if (!formDataPayload.workOrderStatus) {
+      delete formDataPayload.workOrderStatus;
+    }
     if (!normalizedForm.techName.trim()) {
       setSubmitError("Technician name is required.");
       setSubmitting(false);
@@ -398,7 +421,7 @@ export default function CotMedikRepairFormPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             id: workOrderId,
-            formData: normalizedForm,
+            formData: formDataPayload,
           }),
         });
         if (!res.ok) {
@@ -423,13 +446,15 @@ export default function CotMedikRepairFormPage() {
             type: "cot",
             customerId,
             technicianId: techId ?? undefined,
-            formData: normalizedForm,
+            formData: formDataPayload,
+            checklistIds: pendingChecklistIds,
           }),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error ?? "Failed to save");
         }
+        setPendingChecklistIds([]);
         if (returnTo && !chain) {
           router.push(returnTo);
           return;
@@ -477,13 +502,37 @@ export default function CotMedikRepairFormPage() {
           </div>
 
           <div className="px-9 py-7 max-sm:px-[18px] max-sm:py-5">
-            <button
-              type="button"
-              onClick={() => router.push(returnTo || "/portal/work-orders")}
-              className="mb-5 rounded-[3px] border border-[#d0d0d0] bg-[#f4f4f4] px-3 py-2 text-xs font-semibold uppercase tracking-[1px] text-[#111] hover:bg-[#eaeaea]"
-            >
-              Back
-            </button>
+            <div className="mb-5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.push(returnTo || "/portal/work-orders")}
+                className="rounded-[3px] border border-[#d0d0d0] bg-[#f4f4f4] px-3 py-2 text-xs font-semibold uppercase tracking-[1px] text-[#111] hover:bg-[#eaeaea]"
+              >
+                Back
+              </button>
+              {isOwner && (
+                <button
+                  type="button"
+                  disabled={!canOpenChecklist}
+                  onClick={() => setChecklistOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-[3px] border border-[#d0d0d0] bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[1px] text-[#111] hover:bg-[#f4f4f4] disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    canOpenChecklist
+                      ? "Open optional checklist"
+                      : "Customer and technician are required to open a checklist"
+                  }
+                >
+                  <ClipboardCheck className="size-3.5" />
+                  Checklist
+                </button>
+              )}
+              {!isEditMode && pendingChecklistIds.length > 0 ? (
+                <span className="font-mono text-[10px] uppercase tracking-[1px] text-[#666]">
+                  {pendingChecklistIds.length} checklist
+                  {pendingChecklistIds.length === 1 ? "" : "s"} will link on submit
+                </span>
+              ) : null}
+            </div>
             <div className="mb-7">
               <div className="mb-2.5 font-mono text-[10px] uppercase tracking-[3px] text-[#111]">
                 Identification
@@ -705,6 +754,10 @@ export default function CotMedikRepairFormPage() {
                   />
                 </div>
                 <div className="mt-2.5 flex flex-wrap items-center gap-6">
+                  <WorkOrderStatusToggle
+                    value={form.workOrderStatus}
+                    onChange={(v) => set("workOrderStatus", v)}
+                  />
                   <Toggle
                     label="Adjusted"
                     value={form.adjusted}
@@ -767,6 +820,30 @@ export default function CotMedikRepairFormPage() {
           </div>
         </div>
       </div>
+      {canOpenChecklist && customerId && techId ? (
+        <WorkOrderChecklistDialog
+          open={checklistOpen}
+          onOpenChange={setChecklistOpen}
+          type="cot"
+          techId={techId}
+          techName={(techName || form.techName).trim()}
+          customerId={customerId}
+          customerName={(customerName || form.companyName).trim()}
+          prefill={{
+            serialNumber: form.sn,
+            modelNumber: form.model,
+            productName: form.make,
+            dateOfService: form.date,
+          }}
+          workOrderId={workOrderId || undefined}
+          onChecklistSaved={(id) => {
+            if (workOrderId) return;
+            setPendingChecklistIds((prev) =>
+              prev.includes(id) ? prev : [...prev, id]
+            );
+          }}
+        />
+      ) : null}
     </>
   );
 }

@@ -75,7 +75,7 @@ export function ChecklistClient({
   technicianName: string;
 }) {
   const isOwner = role === "owner";
-  const canCreate = role === "owner" || role === "technician";
+  const canCreate = false;
   const clientLike = isLocationPortalRole(role);
   const searchParams = useSearchParams();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -358,6 +358,11 @@ export function ChecklistClient({
             <h2 className="text-sm font-medium text-zinc-900">
               {isOwner ? "All checklists" : clientLike ? "Your checklists" : "Checklist history"}
             </h2>
+            {(isOwner || role === "technician") && (
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Create checklists from a work order (Checklist button on the form).
+              </p>
+            )}
           </div>
 
           {(isOwner || clientLike || role === "technician") && (

@@ -15,6 +15,7 @@ import {
 import { LiftPassFailToggle, LiftStatusToggle } from "@/components/lift-pm-toggles";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/lib/with-auth";
+import { CHECKLIST_EMBEDDED_DONE_MESSAGE } from "@/lib/work-order-status";
 
 function CotPassFailToggle({
   value,
@@ -100,34 +101,71 @@ function normalizeLiftStatuses(raw: unknown): Record<string, LiftChecklistStatus
   return out;
 }
 
-export function ChecklistFormClient({
+export type ChecklistFormEmbedConfig = {
+  type: "cot" | "lift";
+  customerId: string;
+  customerName: string;
+  techId: string;
+  techName: string;
+  workOrderId?: string;
+  serialNumber?: string;
+  modelNumber?: string;
+  productName?: string;
+  dateOfService?: string;
+  onDone?: (checklistId?: string) => void;
+};
+
+type ChecklistLaunchParams = {
+  checklistId: string;
+  typeParam: "cot" | "lift" | "";
+  customerIdParam: string;
+  customerNameParam: string;
+  techIdParam: string;
+  techNameParam: string;
+  prefillSerial: string;
+  prefillModel: string;
+  prefillProduct: string;
+  prefillDate: string;
+  linkedWorkOrderId: string;
+  returnTo: string;
+  isEmbedded: boolean;
+  onEmbeddedDone?: (checklistId?: string) => void;
+};
+
+function ChecklistFormBody({
   role,
   userId,
   userName,
+  launch,
 }: {
   role: Role;
   userId: string;
   userName: string;
+  launch: ChecklistLaunchParams;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
-  const checklistId = searchParams.get("checklistId")?.trim() ?? "";
+  const {
+    checklistId,
+    typeParam,
+    customerIdParam,
+    customerNameParam,
+    techIdParam,
+    techNameParam,
+    prefillSerial,
+    prefillModel,
+    prefillProduct,
+    prefillDate,
+    linkedWorkOrderId,
+    returnTo,
+    isEmbedded,
+    onEmbeddedDone,
+  } = launch;
   const isEditMode = Boolean(checklistId);
 
-  const typeParam =
-    searchParams.get("type") === "lift"
-      ? "lift"
-      : searchParams.get("type") === "cot"
-        ? "cot"
-        : "";
-  const customerIdParam = searchParams.get("customerId")?.trim() ?? "";
-  const customerNameParam = searchParams.get("customerName")?.trim() ?? "";
-  const techIdParam = searchParams.get("techId")?.trim() ?? "";
-  const techNameParam = searchParams.get("techName")?.trim() ?? "";
-  const returnTo =
-    searchParams.get("returnTo")?.trim() ||
-    (checklistId ? `/portal/checklist/${checklistId}` : "/portal/checklist");
+  function finishEmbedded(checklistId?: string) {
+    onEmbeddedDone?.(checklistId);
+  }
 
   const [type, setType] = useState<"cot" | "lift" | "">(typeParam);
   const [customerId, setCustomerId] = useState(customerIdParam);
@@ -149,11 +187,11 @@ export function ChecklistFormClient({
     INITIAL_CHECKLIST.map((item) => ({ ...item }))
   );
 
-  // Shared / lift fields
-  const [dateOfService, setDateOfService] = useState("");
-  const [serialNumber, setSerialNumber] = useState("");
-  const [productName, setProductName] = useState("");
-  const [modelNumber, setModelNumber] = useState("");
+  // Shared / lift fields — prefilled from work order when opened via dialog
+  const [dateOfService, setDateOfService] = useState(prefillDate);
+  const [serialNumber, setSerialNumber] = useState(prefillSerial);
+  const [productName, setProductName] = useState(prefillProduct);
+  const [modelNumber, setModelNumber] = useState(prefillModel);
   const [liftStatuses, setLiftStatuses] = useState<Record<string, LiftChecklistStatus | null>>(
     {}
   );
@@ -296,6 +334,9 @@ export function ChecklistFormClient({
         checklist,
       };
     }
+    if (linkedWorkOrderId) {
+      formData.workOrderId = linkedWorkOrderId;
+    }
 
     setSubmitting(true);
     try {
@@ -313,6 +354,10 @@ export function ChecklistFormClient({
         throw new Error(data.error ?? (isEditMode ? "Failed to save" : "Failed to submit"));
       }
       toast.success(isEditMode ? "Checklist updated" : "Checklist submitted");
+      if (isEmbedded) {
+        finishEmbedded(data.id);
+        return;
+      }
       router.push(data.id ? `/portal/checklist/${data.id}` : returnTo);
       router.refresh();
     } catch (e) {
@@ -387,14 +432,21 @@ export function ChecklistFormClient({
       : "Submit";
 
   return (
-    <div className="min-h-dvh bg-white font-sans text-[#111]">
+    <div className={cn("bg-white font-sans text-[#111]", isEmbedded ? "min-h-0" : "min-h-dvh")}>
       <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-4 py-2.5 sm:px-6">
-        <Button asChild variant="outline" size="sm">
-          <Link href={returnTo}>
+        {isEmbedded ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => finishEmbedded()}>
             <ArrowLeft className="mr-2 size-4" />
-            Back
-          </Link>
-        </Button>
+            Close
+          </Button>
+        ) : (
+          <Button asChild variant="outline" size="sm">
+            <Link href={returnTo}>
+              <ArrowLeft className="mr-2 size-4" />
+              Back
+            </Link>
+          </Button>
+        )}
         <p className="text-sm text-zinc-600 sm:text-base">
           {customerLabel} · {brandLabel} · {technicianName}
           {isEditMode ? " · Editing" : ""}
@@ -728,6 +780,101 @@ export function ChecklistFormClient({
       )}
     </div>
   );
+}
+
+function ChecklistFormFromSearchParams({
+  role,
+  userId,
+  userName,
+}: {
+  role: Role;
+  userId: string;
+  userName: string;
+}) {
+  const searchParams = useSearchParams();
+  const checklistId = searchParams.get("checklistId")?.trim() ?? "";
+  const returnTo =
+    searchParams.get("returnTo")?.trim() ||
+    (checklistId ? `/portal/checklist/${checklistId}` : "/portal/checklist");
+  const isEmbedded =
+    searchParams.get("embedded") === "1" || returnTo === "embedded";
+
+  return (
+    <ChecklistFormBody
+      role={role}
+      userId={userId}
+      userName={userName}
+      launch={{
+        checklistId,
+        typeParam:
+          searchParams.get("type") === "lift"
+            ? "lift"
+            : searchParams.get("type") === "cot"
+              ? "cot"
+              : "",
+        customerIdParam: searchParams.get("customerId")?.trim() ?? "",
+        customerNameParam: searchParams.get("customerName")?.trim() ?? "",
+        techIdParam: searchParams.get("techId")?.trim() ?? "",
+        techNameParam: searchParams.get("techName")?.trim() ?? "",
+        prefillSerial: searchParams.get("serialNumber")?.trim() ?? "",
+        prefillModel: searchParams.get("modelNumber")?.trim() ?? "",
+        prefillProduct: searchParams.get("productName")?.trim() ?? "",
+        prefillDate: searchParams.get("dateOfService")?.trim() ?? "",
+        linkedWorkOrderId: searchParams.get("workOrderId")?.trim() ?? "",
+        returnTo,
+        isEmbedded,
+        onEmbeddedDone: () => {
+          if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              { type: CHECKLIST_EMBEDDED_DONE_MESSAGE },
+              window.location.origin
+            );
+          }
+        },
+      }}
+    />
+  );
+}
+
+export function ChecklistFormClient({
+  role,
+  userId,
+  userName,
+  embed,
+}: {
+  role: Role;
+  userId: string;
+  userName: string;
+  /** When set, runs in-dialog (no iframe / no URL params). */
+  embed?: ChecklistFormEmbedConfig;
+}) {
+  if (embed) {
+    return (
+      <ChecklistFormBody
+        role={role}
+        userId={userId}
+        userName={userName}
+        launch={{
+          checklistId: "",
+          typeParam: embed.type,
+          customerIdParam: embed.customerId.trim(),
+          customerNameParam: embed.customerName.trim(),
+          techIdParam: embed.techId.trim(),
+          techNameParam: embed.techName.trim(),
+          prefillSerial: embed.serialNumber?.trim() ?? "",
+          prefillModel: embed.modelNumber?.trim() ?? "",
+          prefillProduct: embed.productName?.trim() ?? "",
+          prefillDate: embed.dateOfService?.trim() ?? "",
+          linkedWorkOrderId: embed.workOrderId?.trim() ?? "",
+          returnTo: "embedded",
+          isEmbedded: true,
+          onEmbeddedDone: embed.onDone,
+        }}
+      />
+    );
+  }
+
+  return <ChecklistFormFromSearchParams role={role} userId={userId} userName={userName} />;
 }
 
 function Field({

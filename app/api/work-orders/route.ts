@@ -1,7 +1,7 @@
 import { withAuthApi } from "@/lib/with-auth";
 import { parseWorkOrderFormDateTime, workOrderFormHasDate } from "@/lib/work-order-date";
 import { db } from "@/db";
-import { workOrder, user, workOrderFile } from "@/db/schema";
+import { workOrder, user, workOrderFile, checklist } from "@/db/schema";
 import { eq, and, desc, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { NextResponse } from "next/server";
@@ -13,6 +13,44 @@ import {
 } from "@/lib/portal-access";
 
 export type WorkOrderType = "cot" | "lift";
+
+async function linkChecklistsToWorkOrder(input: {
+  workOrderId: string;
+  checklistIds: string[];
+  customerId: string;
+}) {
+  const ids = [...new Set(input.checklistIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) return;
+
+  const rows = await db
+    .select({
+      id: checklist.id,
+      customerId: checklist.customerId,
+      formData: checklist.formData,
+    })
+    .from(checklist)
+    .where(inArray(checklist.id, ids));
+
+  const now = new Date().toISOString();
+  for (const row of rows) {
+    if (row.customerId !== input.customerId) continue;
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed =
+        typeof row.formData === "string"
+          ? (JSON.parse(row.formData) as Record<string, unknown>)
+          : {};
+    } catch {
+      parsed = {};
+    }
+    if (parsed.workOrderId === input.workOrderId) continue;
+    parsed.workOrderId = input.workOrderId;
+    await db
+      .update(checklist)
+      .set({ formData: JSON.stringify(parsed), updatedAt: now })
+      .where(eq(checklist.id, row.id));
+  }
+}
 
 function customerMatchesWorkType(customerType: string | null, workType: WorkOrderType): boolean {
   const normalized = String(customerType ?? "cot").trim().toLowerCase();
@@ -115,7 +153,13 @@ export async function POST(request: Request) {
   if (authResult instanceof NextResponse) return authResult;
   const { user: authUser, role } = authResult;
 
-  let body: { type: WorkOrderType; customerId: string; formData: unknown; technicianId?: string };
+  let body: {
+    type: WorkOrderType;
+    customerId: string;
+    formData: unknown;
+    technicianId?: string;
+    checklistIds?: string[];
+  };
   try {
     body = await request.json();
   } catch {
@@ -123,6 +167,7 @@ export async function POST(request: Request) {
   }
 
   const { type, customerId, formData, technicianId } = body;
+  const checklistIds = Array.isArray(body.checklistIds) ? body.checklistIds : [];
   if (!type || !customerId || formData == null) {
     return NextResponse.json(
       { error: "type, customerId, and formData are required" },
@@ -165,6 +210,12 @@ export async function POST(request: Request) {
     submittedById: authUser.id,
     createdAt: now,
     updatedAt: now,
+  });
+
+  await linkChecklistsToWorkOrder({
+    workOrderId: id,
+    checklistIds,
+    customerId,
   });
 
   return NextResponse.json({ id, success: true });
