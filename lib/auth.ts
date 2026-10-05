@@ -177,7 +177,10 @@ export const auth = betterAuth({
     },
   }),
   plugins: [
-    username(),
+    username({
+      // Allow hyphens — location/admin User IDs are often like acme-north
+      usernameValidator: (value) => /^[a-zA-Z0-9_.-]+$/.test(value),
+    }),
     magicLink({
       disableSignUp: true,
       expiresIn: 604800, // 7 days (seconds)

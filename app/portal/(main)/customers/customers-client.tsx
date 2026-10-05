@@ -265,8 +265,24 @@ function statusHint(status?: string | null): string {
 }
 
 function createMagicLinkErrorMessage(rawMessage: string | undefined, sendInvite: boolean): string {
-  const msg = String(rawMessage ?? "").toLowerCase();
-  if (!sendInvite) return rawMessage ?? "Failed to create account";
+  const raw = String(rawMessage ?? "").trim();
+  const msg = raw.toLowerCase();
+  if (msg.includes("username is already taken") || msg.includes("username_is_already_taken")) {
+    return "That User ID is already taken. Choose a different one.";
+  }
+  if (msg.includes("username is too short") || msg.includes("username_too_short")) {
+    return `User ID must be at least ${BETTER_AUTH_MIN_USERNAME_LENGTH} characters.`;
+  }
+  if (msg.includes("username is too long") || msg.includes("username_too_long")) {
+    return `User ID must be ${BETTER_AUTH_MAX_USERNAME_LENGTH} characters or fewer.`;
+  }
+  if (msg.includes("username is invalid") || msg.includes("invalid_username")) {
+    return "User ID can only use letters, numbers, underscores, periods, and hyphens (no spaces).";
+  }
+  if (msg.includes("already exists") || msg.includes("use another email")) {
+    return "An account with that email or User ID already exists.";
+  }
+  if (!sendInvite) return raw || "Failed to create account";
   if (
     msg.includes("email") ||
     msg.includes("bounce") ||
@@ -276,7 +292,7 @@ function createMagicLinkErrorMessage(rawMessage: string | undefined, sendInvite:
   ) {
     return "Email couldn't be sent (invalid, bounced, or suppressed).";
   }
-  return rawMessage ?? "Email couldn't be sent (invalid, bounced, or suppressed).";
+  return raw || "Email couldn't be sent (invalid, bounced, or suppressed).";
 }
 
 function randomInvitePassword(): string {
@@ -337,7 +353,25 @@ function emptyCreateForm() {
 }
 
 const BETTER_AUTH_MAX_USERNAME_LENGTH = 30;
+const BETTER_AUTH_MIN_USERNAME_LENGTH = 3;
+/** Matches Better Auth username rules (letters, numbers, _, ., -). */
+const USERNAME_RE = /^[a-zA-Z0-9_.-]+$/;
 const PENDING_USER_ID_PREFIX = "pending_";
+
+function validateUserId(raw: string): string | null {
+  const username = raw.trim().toLowerCase();
+  if (!username) return "User ID is required.";
+  if (username.length < BETTER_AUTH_MIN_USERNAME_LENGTH) {
+    return `User ID must be at least ${BETTER_AUTH_MIN_USERNAME_LENGTH} characters.`;
+  }
+  if (username.length > BETTER_AUTH_MAX_USERNAME_LENGTH) {
+    return `User ID must be ${BETTER_AUTH_MAX_USERNAME_LENGTH} characters or fewer.`;
+  }
+  if (!USERNAME_RE.test(username)) {
+    return "User ID can only use letters, numbers, underscores, periods, and hyphens (no spaces).";
+  }
+  return null;
+}
 
 function slugifyForUserId(input: string): string {
   const slug = input
@@ -672,12 +706,9 @@ export function CustomersClient() {
       createForm.inviteEmail.trim().length > 0;
 
     if (shouldCreateLoginNow) {
-      if (!createForm.userId.trim()) {
-        setCreateError("User ID is required.");
-        return;
-      }
-      if (createForm.userId.trim().length > BETTER_AUTH_MAX_USERNAME_LENGTH) {
-        setCreateError(`User ID must be ${BETTER_AUTH_MAX_USERNAME_LENGTH} characters or fewer.`);
+      const userIdError = validateUserId(createForm.userId);
+      if (userIdError) {
+        setCreateError(userIdError);
         return;
       }
       if (!sendInvite && (!createForm.password || createForm.password.length < 8)) {
@@ -702,7 +733,8 @@ export function CustomersClient() {
       if (sendInvite) data.resetPassword = true;
       if (createForm.accountKind === "location") {
         data.customerType = createForm.customerType;
-        data.address = createForm.address.trim() || null;
+        const address = createForm.address.trim();
+        if (address) data.address = address;
       }
       if (createForm.accountKind === "employee") {
         data.locationId = createForm.employeeLocationId;
@@ -768,8 +800,9 @@ export function CustomersClient() {
       setResetError("User ID is required.");
       return;
     }
-    if (resetUserId.trim().length > BETTER_AUTH_MAX_USERNAME_LENGTH) {
-      setResetError(`User ID must be ${BETTER_AUTH_MAX_USERNAME_LENGTH} characters or fewer.`);
+    const resetUserIdError = validateUserId(resetUserId);
+    if (resetUserIdError) {
+      setResetError(resetUserIdError);
       return;
     }
 
@@ -1356,10 +1389,13 @@ export function CustomersClient() {
                     type="text"
                     value={createForm.userId}
                     onChange={(e) => setCreateForm((p) => ({ ...p, userId: e.target.value }))}
-                    placeholder="e.g. acme_corp"
+                    placeholder="e.g. acme_corp or acme-north"
                     required
                     autoComplete="nope"
                   />
+                  <p className="text-xs text-zinc-500">
+                    Letters, numbers, underscores, periods, and hyphens only — no spaces.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label className="flex cursor-pointer items-center gap-2">
