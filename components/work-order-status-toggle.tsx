@@ -18,7 +18,7 @@ export function WorkOrderStatusToggle({
   return (
     <div className={cn("flex flex-wrap items-center gap-2.5", className)}>
       <span className="mr-1 font-mono text-[11px] tracking-[1px] text-[#777]">
-        Status
+        Checklist status
       </span>
       <div className="flex items-center gap-2">
         <button
@@ -55,21 +55,32 @@ export function WorkOrderStatusToggle({
 export function WorkOrderStatusBadge({
   status,
   className,
+  showLabel = false,
 }: {
   status: WorkOrderStatus | null | undefined;
   className?: string;
+  showLabel?: boolean;
 }) {
   if (status !== "pass" && status !== "fail") return null;
-  return (
+  const badge = (
     <span
       className={cn(
         "inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 sm:text-xs",
         status === "pass" && "bg-emerald-50 text-emerald-800 ring-emerald-200",
         status === "fail" && "bg-red-50 text-red-800 ring-red-200",
-        className
+        !showLabel && className
       )}
     >
       {workOrderStatusLabel(status)}
     </span>
+  );
+  if (!showLabel) return badge;
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <span className="font-mono text-[10px] uppercase tracking-[1.5px] text-[#777]">
+        Checklist status
+      </span>
+      {badge}
+    </div>
   );
 }

@@ -458,6 +458,11 @@ export default function LiftMedikRepairFormPage() {
                   {pendingChecklistIds.length === 1 ? "" : "s"} will link on submit
                 </span>
               ) : null}
+              <WorkOrderStatusToggle
+                className="ml-auto"
+                value={form.workOrderStatus}
+                onChange={(v) => set("workOrderStatus", v)}
+              />
             </div>
             <div className="mb-7">
               <div className="mb-2.5 font-mono text-[10px] uppercase tracking-[3px] text-[#111]">
@@ -583,13 +588,6 @@ export default function LiftMedikRepairFormPage() {
                   onRemove={(i) => removePart("partsNeeded", i)}
                 />
               </div>
-            </div>
-
-            <div className="mb-7 flex flex-wrap items-center gap-6">
-              <WorkOrderStatusToggle
-                value={form.workOrderStatus}
-                onChange={(v) => set("workOrderStatus", v)}
-              />
             </div>
 
             {submitError && (

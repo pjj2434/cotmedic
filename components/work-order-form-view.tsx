@@ -310,8 +310,11 @@ export function CotFormView({ form }: { form: FormData }) {
           </div>
 
           {parseWorkOrderStatus(form.workOrderStatus) ? (
-            <div className="status-badge-row px-9 pt-4 max-sm:px-[18px]">
-              <WorkOrderStatusBadge status={parseWorkOrderStatus(form.workOrderStatus)} />
+            <div className="status-badge-row flex justify-end px-9 pt-4 max-sm:px-[18px]">
+              <WorkOrderStatusBadge
+                showLabel
+                status={parseWorkOrderStatus(form.workOrderStatus)}
+              />
             </div>
           ) : null}
 
@@ -432,8 +435,11 @@ export function LiftFormView({ form }: { form: FormData }) {
           </div>
 
           {parseWorkOrderStatus(form.workOrderStatus) ? (
-            <div className="status-badge-row px-9 pt-4 max-sm:px-[18px]">
-              <WorkOrderStatusBadge status={parseWorkOrderStatus(form.workOrderStatus)} />
+            <div className="status-badge-row flex justify-end px-9 pt-4 max-sm:px-[18px]">
+              <WorkOrderStatusBadge
+                showLabel
+                status={parseWorkOrderStatus(form.workOrderStatus)}
+              />
             </div>
           ) : null}
 
