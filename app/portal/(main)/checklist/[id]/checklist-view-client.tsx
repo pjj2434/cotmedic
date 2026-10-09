@@ -140,7 +140,7 @@ export function ChecklistViewClient({
 
   return (
     <div className="min-h-screen bg-zinc-100 -mx-4 -mt-4 w-[calc(100%+2rem)] sm:-mx-5 sm:-mt-5 sm:w-[calc(100%+2.5rem)] md:-mx-6 md:w-[calc(100%+3rem)]">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 py-2 print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 py-2 print:hidden">
         <Button variant="outline" size="sm" asChild>
           <Link href="/portal/checklist">
             <ArrowLeft className="mr-2 size-4" />

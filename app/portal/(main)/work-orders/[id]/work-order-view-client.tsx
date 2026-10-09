@@ -301,7 +301,7 @@ export function WorkOrderViewClient({
 
   return (
     <div className="min-h-screen bg-zinc-100">
-      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 py-2 print:hidden">
         <Button variant="outline" size="sm" asChild>
           <Link href="/portal/work-orders">
             <ArrowLeft className="mr-2 size-4" />
@@ -343,7 +343,7 @@ export function WorkOrderViewClient({
         </div>
       </div>
       {canExpandPreview && (
-        <p className="mb-2 px-2 text-center text-xs text-zinc-500 sm:px-3">
+        <p className="mb-2 mt-2 px-2 text-center text-xs text-zinc-500 sm:px-3">
           Tap or click preview to enlarge
         </p>
       )}

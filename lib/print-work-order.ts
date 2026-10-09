@@ -186,6 +186,14 @@ export function printWorkOrderContent(
       border: none !important;
       min-height: 0 !important;
     }
+    .checklist-batch-print-item {
+      break-after: page;
+      page-break-after: always;
+    }
+    .checklist-batch-print-item:last-child {
+      break-after: auto;
+      page-break-after: auto;
+    }
   `
     : `
     @page { size: 8.5in 11in; margin: 0.2in; }

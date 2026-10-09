@@ -83,6 +83,12 @@ export function describeChecklistSearchMatch(
   if (modelNumber.toLowerCase().includes(needle)) return `Model ${modelNumber}`;
   if (input.technicianName.toLowerCase().includes(needle)) return input.technicianName;
   if (input.customerName.toLowerCase().includes(needle)) return input.customerName;
+  if (dateIso) {
+    const dateLabel = formatCalendarIsoDate(dateIso).toLowerCase();
+    if (dateIso.includes(needle) || dateLabel.includes(needle)) {
+      return formatCalendarIsoDate(dateIso);
+    }
+  }
 
   try {
     const data = JSON.parse(input.formData) as Record<string, unknown>;

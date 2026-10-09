@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronRight, FileText, Trash2 } from "lucide-react";
+import { ChevronRight, FileText, Printer, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +33,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ReportDateField } from "@/components/report-date-field";
+import {
+  ChecklistFormView,
+  parseChecklistFormData,
+} from "@/components/checklist-form-view";
+import { printWorkOrderContent } from "@/lib/print-work-order";
+import { useDisablePrintOnMobilePwa } from "@/hooks/use-mobile-pwa";
 import type { Role } from "@/lib/with-auth";
 import { isLocationPortalRole } from "@/lib/portal-roles";
 
@@ -49,6 +56,8 @@ type ChecklistListItem = {
   technicianName: string;
   customerName: string;
   submittedByName?: string | null;
+  formData?: string;
+  workDateIso?: string;
   workDateLabel?: string;
   serialNumber?: string;
   equipmentType?: string;
@@ -75,9 +84,13 @@ export function ChecklistClient({
   technicianName: string;
 }) {
   const isOwner = role === "owner";
-  const canCreate = false;
+  const canCreate = isOwner || role === "technician";
   const clientLike = isLocationPortalRole(role);
   const searchParams = useSearchParams();
+  const disablePrintOnMobilePwa = useDisablePrintOnMobilePwa();
+  const batchPrintRef = useRef<HTMLDivElement>(null);
+  const [printRunId, setPrintRunId] = useState(0);
+  const [batchPrintItems, setBatchPrintItems] = useState<ChecklistListItem[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -95,12 +108,23 @@ export function ChecklistClient({
   const [filterQuery, setFilterQuery] = useState(() => searchParams.get("q")?.trim() ?? "");
   const [filterEquipment, setFilterEquipment] = useState<string>("__all__");
   const [filterBrand, setFilterBrand] = useState<string>("__all__");
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
   const [workType, setWorkType] = useState<WorkType | "">("");
 
   useEffect(() => {
     const q = searchParams.get("q")?.trim() ?? "";
     if (q) setFilterQuery(q);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (printRunId === 0 || batchPrintItems.length === 0) return;
+    const t = window.setTimeout(() => {
+      if (batchPrintRef.current) printWorkOrderContent(batchPrintRef.current);
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [printRunId, batchPrintItems]);
+
   const fetchChecklists = useCallback(async () => {
     try {
       const res = await fetch("/api/checklists");
@@ -193,6 +217,9 @@ export function ChecklistClient({
       ) {
         return false;
       }
+      const dateIso = item.workDateIso ?? "";
+      if (filterStartDate && (!dateIso || dateIso < filterStartDate)) return false;
+      if (filterEndDate && (!dateIso || dateIso > filterEndDate)) return false;
       if (q) {
         const eq = equipmentLabel(item.equipmentType)?.toLowerCase() ?? "";
         const hay = [
@@ -203,6 +230,7 @@ export function ChecklistClient({
           eq,
           brandLabel(item.type),
           item.workDateLabel ?? "",
+          item.workDateIso ?? "",
         ]
           .join(" ")
           .toLowerCase();
@@ -210,7 +238,16 @@ export function ChecklistClient({
       }
       return true;
     });
-  }, [submitted, isOwner, filterCustomerId, filterQuery, filterEquipment, filterBrand]);
+  }, [
+    submitted,
+    isOwner,
+    filterCustomerId,
+    filterQuery,
+    filterEquipment,
+    filterBrand,
+    filterStartDate,
+    filterEndDate,
+  ]);
 
   async function handleDelete() {
     if (!deleteId) return;
@@ -242,7 +279,7 @@ export function ChecklistClient({
       : null;
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-3">
+    <div className="w-full space-y-3">
       {canCreate && (
         <div className="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm sm:p-4">
           <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
@@ -355,13 +392,30 @@ export function ChecklistClient({
       <div className="rounded-md border border-zinc-200 bg-white shadow-sm">
         <div className="border-b border-zinc-200 px-3 py-2.5 sm:px-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-medium text-zinc-900">
-              {isOwner ? "All checklists" : clientLike ? "Your checklists" : "Checklist history"}
-            </h2>
-            {(isOwner || role === "technician") && (
+            <div>
+              <h2 className="text-sm font-medium text-zinc-900">
+                {isOwner ? "All checklists" : clientLike ? "Your checklists" : "Checklist history"}
+              </h2>
               <p className="mt-0.5 text-xs text-zinc-500">
-                Create checklists from a work order (Checklist button on the form).
+                {filtered.length} shown
+                {filtered.length !== submitted.length ? ` of ${submitted.length}` : ""}
               </p>
+            </div>
+            {!disablePrintOnMobilePwa && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={filtered.length === 0}
+                onClick={() => {
+                  setBatchPrintItems(filtered);
+                  setPrintRunId((n) => n + 1);
+                }}
+              >
+                <Printer className="mr-1.5 size-3.5" />
+                Print {filtered.length === submitted.length ? "all" : "filtered"}
+              </Button>
             )}
           </div>
 
@@ -369,8 +423,8 @@ export function ChecklistClient({
             <div
               className={
                 isOwner
-                  ? "mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4"
-                  : "mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+                  ? "mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
+                  : "mt-2.5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
               }
             >
               {isOwner && (
@@ -396,7 +450,7 @@ export function ChecklistClient({
                 <Input
                   value={filterQuery}
                   onChange={(e) => setFilterQuery(e.target.value)}
-                  placeholder="Serial, customer, tech…"
+                  placeholder="Serial, date, customer, tech…"
                   className="h-8 text-sm"
                 />
               </div>
@@ -425,6 +479,22 @@ export function ChecklistClient({
                     <SelectItem value="lift">Lift</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-zinc-500">Start date</Label>
+                <ReportDateField
+                  value={filterStartDate}
+                  onChange={setFilterStartDate}
+                  placeholder="Start date"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-zinc-500">End date</Label>
+                <ReportDateField
+                  value={filterEndDate}
+                  onChange={setFilterEndDate}
+                  placeholder="End date"
+                />
               </div>
             </div>
           )}
@@ -479,6 +549,24 @@ export function ChecklistClient({
           </ul>
         )}
       </div>
+
+      {batchPrintItems.length > 0 && (
+        <div className="pointer-events-none fixed left-[-10000px] top-0" aria-hidden>
+          <div ref={batchPrintRef}>
+            {batchPrintItems.map((item) => (
+              <div key={item.id} className="checklist-batch-print-item">
+                <ChecklistFormView
+                  formData={parseChecklistFormData(item.formData ?? "{}")}
+                  technicianName={item.technicianName}
+                  brandType={item.type === "lift" ? "lift" : "cot"}
+                  compact={false}
+                  mode="full"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
