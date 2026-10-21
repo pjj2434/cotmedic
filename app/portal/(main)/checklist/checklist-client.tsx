@@ -273,9 +273,10 @@ export function ChecklistClient({
     : role === "technician"
       ? { id: userId, name: technicianName }
       : null;
+  const allowAnotherParam = canCreate ? "&allowAnother=1" : "";
   const formUrl =
     canCreate && workType && selectedCustomer && activeTechnician
-      ? `/checklist-form?type=${encodeURIComponent(workType)}&techName=${encodeURIComponent(activeTechnician.name)}&techId=${encodeURIComponent(activeTechnician.id)}&customerId=${encodeURIComponent(selectedCustomer.id)}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/checklist")}`
+      ? `/checklist-form?type=${encodeURIComponent(workType)}&techName=${encodeURIComponent(activeTechnician.name)}&techId=${encodeURIComponent(activeTechnician.id)}&customerId=${encodeURIComponent(selectedCustomer.id)}&customerName=${encodeURIComponent(selectedCustomer.name)}&returnTo=${encodeURIComponent("/portal/checklist")}${allowAnotherParam}`
       : null;
 
   return (

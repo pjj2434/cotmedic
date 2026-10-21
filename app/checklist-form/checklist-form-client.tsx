@@ -129,6 +129,7 @@ type ChecklistLaunchParams = {
   linkedWorkOrderId: string;
   returnTo: string;
   isEmbedded: boolean;
+  allowAnother: boolean;
   onEmbeddedDone?: (checklistId?: string) => void;
 };
 
@@ -159,6 +160,7 @@ function ChecklistFormBody({
     linkedWorkOrderId,
     returnTo,
     isEmbedded,
+    allowAnother,
     onEmbeddedDone,
   } = launch;
   const isEditMode = Boolean(checklistId);
@@ -199,6 +201,23 @@ function ChecklistFormBody({
   const [submitting, setSubmitting] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(isEditMode);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [chainSaveHint, setChainSaveHint] = useState(false);
+
+  function resetFormForAnotherChecklist() {
+    setRepairNecessary(false);
+    setWorkOrderType("Preventative Maintenance");
+    setProblemDescription("");
+    setRepairNotes("");
+    setEquipmentType("");
+    setChecklist(INITIAL_CHECKLIST.map((item) => ({ ...item })));
+    setSerialNumber("");
+    setProductName("");
+    setModelNumber("");
+    setLiftStatuses({});
+    setChainSaveHint(true);
+    window.setTimeout(() => setChainSaveHint(false), 5000);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   const paramsValid = !!type && !!customerId && !!technicianId;
   const customerLabel = useMemo(() => customerName || "Customer", [customerName]);
@@ -294,7 +313,8 @@ function ChecklistFormBody({
     setLiftStatuses((prev) => ({ ...prev, [id]: val }));
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(options?: { chain?: boolean }) {
+    const chain = options?.chain === true;
     if (!paramsValid) {
       toast.error("Missing customer or technician. Go back and select them first.");
       return;
@@ -356,6 +376,10 @@ function ChecklistFormBody({
       toast.success(isEditMode ? "Checklist updated" : "Checklist submitted");
       if (isEmbedded) {
         finishEmbedded(data.id);
+        return;
+      }
+      if (chain && allowAnother && !isEditMode) {
+        resetFormForAnotherChecklist();
         return;
       }
       router.push(data.id ? `/portal/checklist/${data.id}` : returnTo);
@@ -430,6 +454,7 @@ function ChecklistFormBody({
     : isEditMode
       ? "Save"
       : "Submit";
+  const showChainSubmit = allowAnother && !isEditMode && !isEmbedded && !!customerId;
 
   return (
     <div className={cn("bg-white font-sans text-[#111]", isEmbedded ? "min-h-0" : "min-h-dvh")}>
@@ -451,15 +476,33 @@ function ChecklistFormBody({
           {customerLabel} · {brandLabel} · {technicianName}
           {isEditMode ? " · Editing" : ""}
         </p>
-        <Button
-          type="button"
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="bg-red-600 hover:bg-red-700"
-        >
-          {saveLabel}
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {showChainSubmit && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={submitting}
+              onClick={() => void handleSubmit({ chain: true })}
+            >
+              {submitting ? "Saving…" : "Submit & start another"}
+            </Button>
+          )}
+          <Button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={submitting}
+            className="bg-red-600 hover:bg-red-700"
+          >
+            {saveLabel}
+          </Button>
+        </div>
       </div>
+
+      {chainSaveHint && (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900 sm:px-6">
+          Checklist saved. Customer and technician are still selected — fill in the next unit below.
+        </div>
+      )}
 
       {type === "lift" ? (
         <div className="min-h-[calc(100dvh-3.25rem)] bg-neutral-100">
@@ -590,15 +633,26 @@ function ChecklistFormBody({
               </div>
             </div>
 
-            <div className="border-t border-neutral-200 px-3 py-3 sm:px-6">
+            <div className="space-y-2 border-t border-neutral-200 px-3 py-3 sm:px-6">
               <Button
                 type="button"
-                onClick={handleSubmit}
+                onClick={() => void handleSubmit()}
                 disabled={submitting}
                 className="w-full bg-red-600 hover:bg-red-700"
               >
                 {isEditMode ? (submitting ? "Saving…" : "Save checklist") : saveLabel === "Submit" ? "Submit checklist" : saveLabel}
               </Button>
+              {showChainSubmit && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={submitting}
+                  className="w-full"
+                  onClick={() => void handleSubmit({ chain: true })}
+                >
+                  {submitting ? "Saving…" : "Submit & start another"}
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -760,10 +814,21 @@ function ChecklistFormBody({
             </table>
           </section>
 
-          <div className="mt-5 flex justify-end border-t border-zinc-200 pt-4">
+          <div className="mt-5 flex flex-col gap-2 border-t border-zinc-200 pt-4 sm:flex-row sm:justify-end">
+            {showChainSubmit && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={submitting}
+                className="w-full sm:w-auto sm:min-w-40"
+                onClick={() => void handleSubmit({ chain: true })}
+              >
+                {submitting ? "Saving…" : "Submit & start another"}
+              </Button>
+            )}
             <Button
               type="button"
-              onClick={handleSubmit}
+              onClick={() => void handleSubmit()}
               disabled={submitting}
               className="w-full bg-red-600 hover:bg-red-700 sm:w-auto sm:min-w-40"
             >
@@ -823,6 +888,7 @@ function ChecklistFormFromSearchParams({
         linkedWorkOrderId: searchParams.get("workOrderId")?.trim() ?? "",
         returnTo,
         isEmbedded,
+        allowAnother: searchParams.get("allowAnother") === "1",
         onEmbeddedDone: () => {
           if (typeof window !== "undefined" && window.parent && window.parent !== window) {
             window.parent.postMessage(
@@ -868,6 +934,7 @@ export function ChecklistFormClient({
           linkedWorkOrderId: embed.workOrderId?.trim() ?? "",
           returnTo: "embedded",
           isEmbedded: true,
+          allowAnother: false,
           onEmbeddedDone: embed.onDone,
         }}
       />
